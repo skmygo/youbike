@@ -227,6 +227,93 @@ def alerts_table(context: AssetExecutionContext) -> dg.MaterializeResult:
     })
 
 
+# ── 4.5 主動通知 ─────────────────────────────────────────────────────────
+LEVEL_RANK = {"notice": 1, "warning": 2, "critical": 3}
+NOTIFY_MAX = 50          # 單輪最多推這麼多筆，避免一次爆量
+SEEN_PATH = settings.SERVING_DIR / "alerts_seen.json"
+
+
+@dg.asset(
+    deps=[alerts_table],
+    group_name="serving",
+    description="把「新升級為警戒/嚴重」的站推到 webhook（命題要的「主動通知機關」）",
+)
+def alert_notifications(context: AssetExecutionContext) -> dg.MaterializeResult:
+    import json
+    import os
+    import urllib.error
+    import urllib.request
+
+    if not settings.ALERTS_PARQUET.exists():
+        return dg.MaterializeResult(metadata={"狀態": "尚無警示檔，略過"})
+
+    con = _con()
+    rows = con.execute(f"""
+        SELECT station_id, name, district, level, kind, duration_min,
+               bikes, docks_avail, docks_total, ts
+        FROM read_parquet('{settings.ALERTS_PARQUET}')
+        WHERE level IN ('warning', 'critical')
+        ORDER BY CASE level WHEN 'critical' THEN 0 ELSE 1 END, duration_min DESC
+    """).fetchall()
+    con.close()
+
+    seen: dict[str, str] = {}
+    cold_start = not SEEN_PATH.exists()
+    if not cold_start:
+        try:
+            seen = json.loads(SEEN_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            seen, cold_start = {}, True
+
+    events, now_seen = [], {}
+    for (sid, name, district, level, kind, dur, bikes, davail, dtotal, ts) in rows:
+        key = str(sid)
+        now_seen[key] = level
+        prev = seen.get(key)
+        # 只推「新出現」或「往上升級」的；持續中的不重複打擾
+        if prev is not None and LEVEL_RANK[level] <= LEVEL_RANK.get(prev, 0):
+            continue
+        events.append({
+            "station_id": int(sid), "name": name, "district": district,
+            "level": level, "prev_level": prev, "kind": kind,
+            "duration_min": int(dur) if dur is not None else None,
+            "bikes": int(bikes), "docks_avail": int(davail), "docks_total": int(dtotal),
+            "ts": str(ts),
+        })
+
+    SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SEEN_PATH.write_text(json.dumps(now_seen, ensure_ascii=False), encoding="utf-8")
+
+    # 第一次跑時每個警戒站看起來都是「新的」，那不是真的升級——先記狀態不推播
+    if cold_start:
+        return dg.MaterializeResult(metadata={
+            "狀態": "首次執行，只建立基準狀態不推播", "目前警戒以上": len(rows)})
+    if not events:
+        return dg.MaterializeResult(metadata={"新升級": 0, "目前警戒以上": len(rows)})
+
+    events = events[:NOTIFY_MAX]
+    url = os.getenv("YOUBIKE_NOTIFY_WEBHOOK", "http://api:8000/api/notify/log")
+    payload = json.dumps({"source": "dagster.alert_notifications", "events": events},
+                         ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            status = resp.status
+        delivered = True
+    except (urllib.error.URLError, OSError) as exc:
+        status, delivered = str(exc), False
+        context.log.warning(f"webhook 推送失敗（不影響其他資產）：{exc}")
+
+    return dg.MaterializeResult(metadata={
+        "新升級": len(events),
+        "目前警戒以上": len(rows),
+        "推送目的地": url,
+        "推送結果": "成功" if delivered else f"失敗：{status}",
+        "最嚴重": events[0]["name"] if events else "—",
+    })
+
+
 # ── 5. 模型預測 ──────────────────────────────────────────────────────────
 @dg.asset(
     deps=[serving_snapshots],
@@ -287,7 +374,7 @@ forecast_schedule = dg.ScheduleDefinition(
 
 defs = dg.Definitions(
     assets=[realtime_snapshot, station_registry, serving_snapshots, alerts_table,
-            forecast_table],
+            alert_notifications, forecast_table],
     jobs=[realtime_job, forecast_job],
     schedules=[realtime_schedule, forecast_schedule],
 )

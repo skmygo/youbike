@@ -27,6 +27,11 @@ export function AlertsPage() {
     refetchInterval: 120_000,
     enabled: mode === "forecast",
   })
+  const notify = useQuery({
+    queryKey: ["notify-log"],
+    queryFn: () => api.notifyLog(12),
+    refetchInterval: 60_000,
+  })
 
   const rows = alerts.data?.alerts ?? []
   const districts = useMemo(
@@ -233,6 +238,51 @@ export function AlertsPage() {
           )}
         </div>
       </div>
+
+      {/* S1 通知管道：命題要的「主動通知機關」，面板之外還要推得出去 */}
+      <aside className="hidden w-[260px] shrink-0 flex-col border-l border-line xl:flex">
+        <div className="border-b border-line px-3 py-3">
+          <p className="eyebrow">通知紀錄</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-ink-dim">
+            排程每 10 分鐘比對一次，只推<b className="font-normal text-ink">新升級</b>
+            為警戒／嚴重的站（持續中的不重複打擾）。這裡示範的目的地是自家 webhook，
+            換成 LINE Notify 或簡訊是同一個介面。
+          </p>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {(notify.data?.events ?? []).map((e, i) => (
+            <div
+              key={`${e.station_id}-${e.received_at ?? i}`}
+              onClick={() => setSelected(e.station_id)}
+              className="cursor-pointer border-b border-line-soft px-3 py-2 transition-colors hover:bg-panel"
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-[12px] text-ink">{e.name}</span>
+                <span
+                  className="shrink-0 text-[11px]"
+                  style={{ color: LEVEL[e.level as AlertLevel]?.color ?? "#8493ac" }}
+                >
+                  {LEVEL[e.level as AlertLevel]?.label ?? e.level}
+                </span>
+              </div>
+              <p className="num mt-0.5 text-[10px] text-ink-faint">
+                {e.district} · {KIND_LABEL[e.kind] ?? e.kind}
+                {e.prev_level ? ` · 由${LEVEL[e.prev_level as AlertLevel]?.label ?? e.prev_level}升級` : " · 新出現"}
+              </p>
+              <p className="num mt-0.5 text-[10px] text-ink-faint">
+                {fmtTime(e.received_at ?? e.ts)} · 可借 {e.bikes} / 可還 {e.docks_avail}
+              </p>
+            </div>
+          ))}
+          {(notify.data?.count ?? 0) === 0 && (
+            <p className="px-3 py-8 text-center text-[11px] leading-relaxed text-ink-faint">
+              目前沒有新的升級事件。
+              <br />
+              排程比對到有站點升級為警戒或嚴重時，會即時推播到這裡。
+            </p>
+          )}
+        </div>
+      </aside>
 
       <StationDrawer stationId={selected} onClose={() => setSelected(null)} />
     </div>

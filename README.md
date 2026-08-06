@@ -126,4 +126,5 @@ DAGSTER_HOME=$PWD/_out/dagster dagster dev -m pipeline.defs
 | `GET /api/alerts` | 規則型三級警示 |
 | `GET /api/forecast` `/forecast/meta` `/forecast/station/{id}` `/forecast/alerts` | 模型預測與預測型警示 |
 | `GET /api/dispatch` | 調度建議（模型未就緒時自動降級為規則型） |
-| `GET /api/model/report` | 6 月回測完整報告 |
+| `GET /api/model/report` `/api/model/kpi` | 6 月回測完整報告、KPI1 調度改善模擬 |
+| `POST/GET /api/notify/log` | 主動通知：Dagster 把新升級為警戒／嚴重的站推來，警示頁顯示紀錄 |

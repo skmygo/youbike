@@ -363,6 +363,21 @@ export interface ModelKpi {
   assumptions?: string[]
 }
 
+export interface NotifyEvent {
+  station_id: number
+  name: string
+  district: string | null
+  level: string
+  prev_level: string | null
+  kind: string
+  duration_min: number | null
+  bikes: number
+  docks_avail: number
+  docks_total: number
+  ts: string
+  received_at?: string
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`/api${path}`)
   if (!res.ok) throw new Error(`${res.status} ${path}`)
@@ -428,4 +443,6 @@ export const api = {
     }>(`/dispatch?horizon=${horizon}&limit=${limit}`),
   modelReport: () => get<ModelReport>("/model/report"),
   modelKpi: () => get<ModelKpi>("/model/kpi"),
+  notifyLog: (limit = 20) =>
+    get<{ count: number; events: NotifyEvent[] }>(`/notify/log?limit=${limit}`),
 }

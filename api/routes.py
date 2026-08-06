@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from datetime import date as date_module
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
@@ -617,6 +618,61 @@ def dispatch(
                          f"配不到就標示需由調度中心出車。同一來源站可能出現在多筆任務中"},
         "tasks": rows,
     }
+
+
+# ── 通知管道（S1）────────────────────────────────────────────────────────
+NOTIFY_LOG = "notify_log.jsonl"
+NOTIFY_KEEP = 500      # 只留最近這麼多筆，避免檔案無限長大
+
+
+@router.post("/notify/log")
+def notify_log_post(payload: dict) -> dict:
+    """接收警示通知（預設的 webhook 目的地）。
+
+    命題說「系統不會主動通知機關」，所以警示除了進面板，還要能推出去。
+    這裡示範的是最單純的 webhook 目的地：Dagster 每輪把**新升級**為警戒/嚴重的站
+    POST 過來，這支落成 JSONL。真實部署換成 LINE Notify / Teams / 簡訊都是同一個介面。
+    """
+    path = settings.SERVING_DIR / NOTIFY_LOG
+    path.parent.mkdir(parents=True, exist_ok=True)
+    events = payload.get("events") or [payload]
+    received = datetime.now().astimezone().isoformat(timespec="seconds")
+    lines = [json.dumps({**e, "received_at": received}, ensure_ascii=False) for e in events]
+
+    old: list[str] = []
+    if path.exists():
+        try:
+            old = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            old = []
+    keep = (old + lines)[-NOTIFY_KEEP:]
+    tmp = path.with_suffix(".jsonl.tmp")
+    tmp.write_text("\n".join(keep) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return {"ok": True, "received": len(lines), "total_kept": len(keep)}
+
+
+@router.get("/notify/log")
+def notify_log_get(limit: int = Query(30, ge=1, le=200)) -> dict:
+    """通知紀錄（警示頁的小卡讀這支）。"""
+    path = settings.SERVING_DIR / NOTIFY_LOG
+    if not path.exists():
+        return {"count": 0, "events": []}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {"count": 0, "events": []}
+    out = []
+    for line in reversed(lines[-limit * 2:]):
+        if not line.strip():
+            continue
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+        if len(out) >= limit:
+            break
+    return {"count": len(out), "events": out}
 
 
 @router.get("/model/kpi")
