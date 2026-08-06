@@ -4,8 +4,9 @@
 
 ## 狀態塊
 
-- **當前 milestone**：**M4 ✅ 完成**（02:08 回測落地）；M5 程式碼完成且本機驗過，**只差部署驗證**
-  （docker build 中 → 容器驗證 → compose-deploy → 公開網址）。資源罩全程有效，峰值 1.88G/4G，production 容器全程健在
+- **當前 milestone**：**M4 ✅ M5 ✅ 完成並上線**（02:16 公開網址端到端驗收通過，比基準表提前約 2 小時）。
+  M6 也已完成大半（/model 頁、README、簡報大綱.md），剩「KPI1 模擬調度改善」。
+  資源罩全程有效，峰值 1.88G/4G，production 容器全程健在
 - **M4 回測結果（6 月測試集，訓練/驗證完全沒碰過）**：
   - 水位 MAE（台車）LightGBM/persistence：h30 1.442/1.466 **+1.6%**｜h60 2.052/2.213 **+7.3%**｜
     h120 2.746/3.229 **+15.0%**｜h180 3.154/3.992 **+21.0%**（lastweek 5.54 全面墊底）
@@ -82,8 +83,12 @@
     （否則新模型永遠進不了容器）＋ bootstrap 對 `models/` 每次取最新
   - ✅ 本機容器驗證全綠：health / forecast/meta / forecast/alerts / dispatch / model/report 全通，
     三頁截圖正常（首頁預測 KPI 228・11、/dispatch 任務表、/model 回測頁）
-  - [ ] 待做：push → compose-deploy → 公開網址驗收
-- [ ] **M6**（04:15–05:45）KPI hero（回測數字 + KPI1 模擬調度改善）+ /model 頁 + README + 簡報大綱.md
+  - ✅ **已部署上線**（02:11:48 容器重建）；容器內 `dagster job execute -j forecast_refresh` 成功
+    （1.4 秒、5,984 列、即時槽已升到 1.7%）；公開網址 `/api/forecast/meta` `/api/dispatch`
+    `/api/forecast/alerts?mode={operational,strict}` `/api/model/report` 全通；
+    線上 `/dispatch` 截圖：60 任務、46 個可配對出車站、合計搬運 282 台、距離全在 3 km 內
+- [~] **M6** 大半完成：✅ /model 回測報告頁、✅ README、✅ 簡報大綱.md、✅ 首頁預測 KPI hero
+  - [ ] 剩：KPI1 模擬調度改善（用 6 月回測模擬「照建議調度能減少多少無車時間」）
 - [ ] **S**（05:45–07:45）加分梯隊 S1–S5（MISSION §3.5，一次一項）→ 守夜模式（§3.6）
 - [ ] **M7**（07:45–08:00）最終 push + 部署驗證 + SUMMARY.md → stop
 
@@ -113,6 +118,12 @@
   另新增 /api/stats/pulse（今日 + 同星期幾歷史常態）
 - 2026-08-07 00:25 — 備戰重整（loop 重啟前，非 loop 輪）：§3 基準表重排（M4 自 00:15 起，超前時間轉加分梯隊 S1–S5 + 守夜模式）；
   新增 CLAUDE.md 每輪鐵律；健檢全綠：MLflow 200、.venv ml deps OK、/tmp/pw 腳本在、公開網址 health OK、dagster 00:10 新快照
+- 2026-08-07 02:16 — **M4+M5 完成並上線**。回測（6 月）：h60 MAE 2.052 台勝 persistence 7.3%、h180 勝 21.0%；
+  事件級預警在營運門檻下空車偵測 68.1%／平均提前 147 分（規則型恆為 0 分）。三個關鍵修正：
+  ① 事件評估原本只用 70% 門檻算出 6.5% 偵測率——那是門檻造成的假象，改成雙門檻並存
+  ② entrypoint「歷史已存在就整段跳過 bootstrap」會讓新模型永遠進不了容器
+  ③ 調度配對出現 19 km 的荒謬任務 → 加 3 公里上限，配不到就標調度中心出車
+  另補：README、簡報大綱.md、/model 頁
 - 2026-08-07 01:25 — M4 特徵庫 85 秒完成（train 859 萬 / valid 224 萬 / test 216 萬列）；訓練踩兩坑後穩定跑：
   ① DuckDB `.df()` 6.7 秒衝到 4G 被 OOM 殺 → SQL 端 CAST 成 4 bytes + Arrow `self_destruct` + 抽樣 0.35→0.22 + valid 抽 0.5，
     峰值降到 **1.88G**（先寫 memcheck smoke test 驗過才開跑，沒有再賭一次）
