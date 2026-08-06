@@ -13,11 +13,9 @@ bootstrap() {
     echo "[bootstrap] 未設定 S3_ACCESS_KEY，跳過資料引導"
     return 0
   fi
-  if compgen -G "$DATA_DIR/history/snapshots_*.parquet" > /dev/null; then
-    echo "[bootstrap] 歷史資料已存在，跳過下載"
-    return 0
-  fi
-  echo "[bootstrap] 從 S3 引導歷史資料…"
+  # 不能在「歷史已存在」就整段跳過：那樣新訓練出來的模型永遠拉不下來。
+  # bootstrap.py 自己會逐檔跳過既有資料，只有 models/ 每次取最新。
+  echo "[bootstrap] 檢查資料（缺檔才下載，模型一律取最新）…"
   python -m pipeline.bootstrap || echo "[bootstrap] 失敗（不阻擋啟動，API 走 degraded 模式）"
 }
 

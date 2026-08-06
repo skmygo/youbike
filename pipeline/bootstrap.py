@@ -11,11 +11,12 @@ from pathlib import Path
 from api import settings
 from pipeline import s3util
 
-# S3 key prefix → 本機目錄
+# S3 key prefix → 本機目錄；第三欄 = 每次啟動都重抓
+# models/ 會隨訓練更新，若沿用「檔案存在就跳過」，重新部署永遠拿不到新模型
 LAYOUT = [
-    ("history/", settings.HISTORY_DIR),
-    ("serving/", settings.SERVING_DIR),
-    ("models/", settings.MODEL_DIR),
+    ("history/", settings.HISTORY_DIR, False),
+    ("serving/", settings.SERVING_DIR, False),
+    ("models/", settings.MODEL_DIR, True),
 ]
 
 
@@ -33,13 +34,14 @@ def main() -> int:
     n_ok = n_skip = 0
     for key in keys:
         target: Path | None = None
-        for prefix, dest in LAYOUT:
+        always = False
+        for prefix, dest, refresh in LAYOUT:
             if key.startswith(prefix):
-                target = dest / key[len(prefix):]
+                target, always = dest / key[len(prefix):], refresh
                 break
         if target is None or key.endswith("/"):
             continue
-        if target.exists():
+        if target.exists() and not always:
             n_skip += 1
             continue
         try:

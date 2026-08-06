@@ -185,42 +185,55 @@ export function ModelPage() {
             <h2 className="eyebrow mb-2">事件級預警 · 真的能提前多久告訴你</h2>
             <div className="grid gap-3 md:grid-cols-2">
               {(["empty", "full"] as const).map((k) => {
-                const e = ev[k]
-                if (!e || !e.n_events) return null
+                const op = ev[k]?.at_operational_threshold
+                const strict = ev[k]?.at_alert_threshold
+                if (!op || !op.n_events) return null
                 return (
                   <div key={k} className="rounded border border-line bg-panel p-3">
                     <p className="text-[13px] text-ink">
                       {k === "empty" ? "無車可借事件" : "無位可還事件"}
                       <span className="num ml-2 text-[11px] text-ink-faint">
-                        6 月 {e.n_events.toLocaleString()} 起
+                        6 月 {op.n_events.toLocaleString()} 起
                       </span>
                     </p>
                     <dl className="mt-2 space-y-1.5 text-[12px]">
-                      <Row label="事件偵測率" value={pct(e.coverage)} color="#21d0a5" />
+                      <Row label="事件偵測率" value={pct(op.coverage)} color="#21d0a5" />
                       <Row
                         label="平均提前"
-                        value={e.mean_lead_minutes != null ? `${e.mean_lead_minutes.toFixed(0)} 分` : "—"}
+                        value={op.mean_lead_minutes != null ? `${op.mean_lead_minutes.toFixed(0)} 分` : "—"}
                         color="#ffb020"
                       />
-                      <Row label="誤報率" value={pct(e.false_alarm_rate)} />
+                      <Row label="誤報率" value={pct(op.false_alarm_rate)} />
                       <Row
                         label="每站每天警報數"
-                        value={e.alerts_per_station_per_day?.toFixed(2) ?? "—"}
+                        value={op.alerts_per_station_per_day?.toFixed(2) ?? "—"}
                       />
                       <Row label="規則型可提前" value="0 分（事發後才知道）" color="#ff5c5c" />
                     </dl>
-                    {e.lead_distribution && (
+                    {op.lead_distribution && (
                       <p className="num mt-2 text-[11px] text-ink-faint">
                         提前分佈：
-                        {Object.entries(e.lead_distribution)
+                        {Object.entries(op.lead_distribution)
                           .map(([h, n]) => `${h}分 ${n}`)
                           .join(" · ")}
+                      </p>
+                    )}
+                    {strict?.coverage != null && (
+                      <p className="mt-2 border-t border-line-soft pt-2 text-[11px] leading-relaxed text-ink-faint">
+                        同一組事件，若把門檻拉到規劃書的 70%：偵測率降到{" "}
+                        <span className="num">{pct(strict.coverage)}</span>、誤報率{" "}
+                        <span className="num">{pct(strict.false_alarm_rate)}</span>——
+                        少擾民，但大部分事件會漏掉。
                       </p>
                     )}
                   </div>
                 )
               })}
             </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
+              上面的數字採<b className="font-normal text-ink-dim">營運門檻</b>（驗證集上 F1 最佳），
+              也就是線上警示與調度單實際在用的設定。
+            </p>
           </section>
         )}
 

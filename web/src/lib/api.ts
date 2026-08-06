@@ -247,6 +247,9 @@ export interface BacktestHeadline {
   empty_event_coverage: number
   empty_event_mean_lead_minutes: number
   empty_f1_60min: number
+  empty_event_false_alarm_rate?: number
+  strict_empty_event_coverage?: number
+  strict_empty_event_false_alarm_rate?: number
   full_event_coverage: number
   full_event_mean_lead_minutes: number
   n_empty_events_june: number
@@ -319,7 +322,10 @@ export interface ModelReport {
   }
   regression?: Record<string, Record<"lgbm" | "persistence" | "lastweek", RegMetric>>
   classification?: Record<"empty" | "full", Record<string, ClfMetric>>
-  events?: Record<"empty" | "full", EventMetric>
+  events?: Record<"empty" | "full", {
+    at_operational_threshold: EventMetric
+    at_alert_threshold: EventMetric
+  }>
   feature_importance?: Record<string, Array<{ feature: string; gain: number }>>
   headline?: BacktestHeadline
 }

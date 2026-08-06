@@ -264,6 +264,7 @@ def build_live_features(con: duckdb.DuckDBPyConnection) -> tuple[pd.DataFrame, d
         LEFT JOIN district_agg da ON da.district = s.district AND da.ts = w.ts
         LEFT JOIN cluster_agg ca ON ca.cluster_id = s.cluster_id AND ca.ts = w.ts
         LEFT JOIN neigh_agg na ON na.station_id = w.station_id AND na.ts = w.ts
+        LEFT JOIN holidays h ON h.d = CAST(w.ts AS DATE)
         WHERE w.ts = TIMESTAMP '{base_ts}' AND w.ratio IS NOT NULL
         """
     ).df()

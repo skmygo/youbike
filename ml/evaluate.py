@@ -152,8 +152,15 @@ def find_events(test: pd.DataFrame, kind: str) -> pd.DataFrame:
     return starts[["station_id", "ts"]].reset_index(drop=True)
 
 
+def _thr_for(threshold: float | dict, kind: str, h: int) -> float:
+    """門檻可以是單一數值（規劃書的 70%），也可以是每個時距各一的營運門檻。"""
+    if isinstance(threshold, dict):
+        return float(threshold.get(f"clf_{kind}_h{h}", ALERT_PROBA_THRESHOLD))
+    return float(threshold)
+
+
 def evaluate_events(test: pd.DataFrame, proba_df: pd.DataFrame, kind: str,
-                    threshold: float = ALERT_PROBA_THRESHOLD) -> dict:
+                    threshold: float | dict = ALERT_PROBA_THRESHOLD) -> dict:
     """對每個事件：最早在幾分鐘前，模型就以 ≥threshold 的機率預告了它。"""
     events = find_events(test, kind)
     if events.empty:
@@ -167,7 +174,7 @@ def evaluate_events(test: pd.DataFrame, proba_df: pd.DataFrame, kind: str,
         )
         col = f"p_{kind}_{h}"
         vals = lookup[col].reindex(key).to_numpy()
-        hit = np.nan_to_num(vals, nan=0.0) >= threshold
+        hit = np.nan_to_num(vals, nan=0.0) >= _thr_for(threshold, kind, h)
         lead = np.where(hit & (lead < h), h, lead)
 
     detected = lead > 0
@@ -179,7 +186,7 @@ def evaluate_events(test: pd.DataFrame, proba_df: pd.DataFrame, kind: str,
         col = f"y_bikes_{h}" if kind == "empty" else f"y_docks_{h}"
         thr = EMPTY_BIKES_MAX if kind == "empty" else FULL_DOCKS_MAX
         truth = (test[col].to_numpy() <= thr)
-        fired = proba_df[f"p_{kind}_{h}"].to_numpy() >= threshold
+        fired = proba_df[f"p_{kind}_{h}"].to_numpy() >= _thr_for(threshold, kind, h)
         alert_total += int(fired.sum())
         fa_total += int((fired & ~truth).sum())
 
@@ -192,7 +199,8 @@ def evaluate_events(test: pd.DataFrame, proba_df: pd.DataFrame, kind: str,
         "mean_lead_minutes_all_events": float(lead.mean()),
         "lead_distribution": {str(h): int((lead == h).sum()) for h in HORIZONS},
         "missed": int((~detected).sum()),
-        "threshold": threshold,
+        "threshold": threshold if not isinstance(threshold, dict)
+                     else {str(h): _thr_for(threshold, kind, h) for h in HORIZONS},
         "alerts_fired": alert_total,
         "false_alarms": fa_total,
         "false_alarm_rate": float(fa_total / alert_total) if alert_total else 0.0,
@@ -216,7 +224,15 @@ def main() -> None:
     test = load_split("test")
     models = load_models()
     regression, classification, proba_df = evaluate_pointwise(test, models, thresholds)
-    events = {k: evaluate_events(test, proba_df, k) for k in ("empty", "full")}
+    # 兩個門檻各評一次：70% 是規劃書的高信心門檻（少擾民），
+    # 營運門檻是驗證集上 F1 最佳的值（來得及派車）——線上與調度單用的是後者。
+    events = {
+        k: {
+            "at_operational_threshold": evaluate_events(test, proba_df, k, thresholds),
+            "at_alert_threshold": evaluate_events(test, proba_df, k, ALERT_PROBA_THRESHOLD),
+        }
+        for k in ("empty", "full")
+    }
 
     importance = {}
     for h in HORIZONS:
@@ -253,17 +269,23 @@ def main() -> None:
 
     # 首頁 KPI 用的一句話數字（M6 的 hero 直接讀這裡）
     h60 = regression["60"]
+    ee, ef = events["empty"]["at_operational_threshold"], events["full"]["at_operational_threshold"]
+    ee_strict = events["empty"]["at_alert_threshold"]
     report["headline"] = {
         "mae_bikes_60min": round(h60["lgbm"]["mae_bikes"], 3),
         "mae_bikes_60min_persistence": round(h60["persistence"]["mae_bikes"], 3),
         "improve_vs_persistence_pct_60min": round(h60["lgbm"]["improve_vs_persistence_pct"], 1),
-        "empty_event_coverage": round(events["empty"]["coverage"], 4),
-        "empty_event_mean_lead_minutes": round(events["empty"]["mean_lead_minutes"], 1),
-        "empty_f1_60min": round(classification["empty"]["60"]["at_alert_threshold"]["f1"], 3),
-        "full_event_coverage": round(events["full"]["coverage"], 4),
-        "full_event_mean_lead_minutes": round(events["full"]["mean_lead_minutes"], 1),
-        "n_empty_events_june": events["empty"]["n_events"],
-        "n_full_events_june": events["full"]["n_events"],
+        "empty_event_coverage": round(ee["coverage"], 4),
+        "empty_event_mean_lead_minutes": round(ee["mean_lead_minutes"], 1),
+        "empty_event_false_alarm_rate": round(ee["false_alarm_rate"], 4),
+        "empty_f1_60min": round(classification["empty"]["60"]["at_valid_best_f1"]["f1"], 3),
+        "full_event_coverage": round(ef["coverage"], 4),
+        "full_event_mean_lead_minutes": round(ef["mean_lead_minutes"], 1),
+        "n_empty_events_june": ee["n_events"],
+        "n_full_events_june": ef["n_events"],
+        # 高信心門檻（70%）下的同一組數字，供對照
+        "strict_empty_event_coverage": round(ee_strict["coverage"], 4),
+        "strict_empty_event_false_alarm_rate": round(ee_strict["false_alarm_rate"], 4),
     }
 
     out = MODEL_DIR / "report.json"
@@ -285,9 +307,11 @@ def main() -> None:
                 flat[f"h{h}_{ev}_pr_auc"] = c["pr_auc"]
                 flat[f"h{h}_{ev}_f1_at_alert"] = c["at_alert_threshold"]["f1"]
         for ev in ("empty", "full"):
-            flat[f"event_{ev}_coverage"] = events[ev]["coverage"]
-            flat[f"event_{ev}_mean_lead_min"] = events[ev]["mean_lead_minutes"]
-            flat[f"event_{ev}_false_alarm_rate"] = events[ev]["false_alarm_rate"]
+            for tag, key in (("op", "at_operational_threshold"), ("strict", "at_alert_threshold")):
+                e = events[ev][key]
+                flat[f"event_{ev}_{tag}_coverage"] = e["coverage"]
+                flat[f"event_{ev}_{tag}_mean_lead_min"] = e["mean_lead_minutes"]
+                flat[f"event_{ev}_{tag}_false_alarm_rate"] = e["false_alarm_rate"]
         mlflow.log_metrics(flat)
         mlflow.log_artifact(str(out))
     _log(f"回測完成，耗時 {time.time() - t0:.0f}s")
