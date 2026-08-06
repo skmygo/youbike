@@ -263,6 +263,45 @@ def stats_hourly(station_id: int | None = None, district: str | None = None) -> 
     return {"district": district, "rows": rows}
 
 
+@router.get("/stats/pulse")
+def stats_pulse(date: str | None = None) -> dict:
+    """某一天全市各時間槽的空／滿站數（首頁脈搏帶、回放時間軸的底圖）。
+
+    date 省略則取資料最後一天。
+    """
+    src = _sql_sources(_snapshot_sources())
+    st = _stations_sql()
+    if not src or not st:
+        return {"date": date, "points": []}
+
+    if date:
+        day_expr = f"DATE '{date}'"
+    else:
+        day_expr = f"(SELECT CAST(max(ts) AS DATE) FROM {src})"
+
+    rows = db.query(f"""
+        SELECT sn.ts,
+               (EXTRACT(hour FROM sn.ts) * 2
+                + (EXTRACT(minute FROM sn.ts) >= 30)::INT)::TINYINT AS slot,
+               count(*)::INT AS n_stations,
+               sum(CASE WHEN sn.bikes = 0 AND sn.docks_avail > 0
+                        THEN 1 ELSE 0 END)::INT AS n_empty,
+               sum(CASE WHEN sn.docks_avail = 0 AND sn.bikes > 0
+                        THEN 1 ELSE 0 END)::INT AS n_full,
+               sum(CASE WHEN (sn.bikes <= {NEAR_THRESHOLD} OR sn.docks_avail <= {NEAR_THRESHOLD})
+                        AND NOT (sn.bikes = 0 AND sn.docks_avail = 0)
+                        THEN 1 ELSE 0 END)::INT AS n_risk,
+               sum(sn.bikes)::INT AS bikes,
+               round(sum(sn.bikes) / nullif(sum(sn.docks_total), 0), 4) AS occ_rate
+        FROM {src} sn JOIN {st} s USING (station_id)
+        WHERE CAST(sn.ts AS DATE) = {day_expr}
+          AND NOT coalesce(s.always_empty, false)
+        GROUP BY 1, 2 ORDER BY 1
+    """)
+    day = rows[0]["ts"].date().isoformat() if rows else date
+    return {"date": day, "count": len(rows), "points": rows}
+
+
 @router.get("/stats/districts")
 def stats_districts() -> dict:
     """行政區彙總（管理視角）。"""

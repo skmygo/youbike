@@ -2,6 +2,9 @@ import { createRootRoute, createRoute, createRouter } from "@tanstack/react-rout
 
 import { RootLayout } from "@/routes/root"
 import { IndexPage } from "@/routes/index"
+import { ReplayPage } from "@/routes/replay"
+import { AlertsPage } from "@/routes/alerts"
+import { DistrictsPage } from "@/routes/districts"
 import { AboutPage } from "@/routes/about"
 
 const rootRoute = createRootRoute({
@@ -14,13 +17,37 @@ const indexRoute = createRoute({
   component: IndexPage,
 })
 
+const replayRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/replay",
+  component: ReplayPage,
+})
+
+const alertsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/alerts",
+  component: AlertsPage,
+})
+
+const districtsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/districts",
+  component: DistrictsPage,
+})
+
 const aboutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/about",
   component: AboutPage,
 })
 
-const routeTree = rootRoute.addChildren([indexRoute, aboutRoute])
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  replayRoute,
+  alertsRoute,
+  districtsRoute,
+  aboutRoute,
+])
 
 export const router = createRouter({ routeTree })
 
