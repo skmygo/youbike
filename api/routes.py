@@ -10,7 +10,7 @@
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date as date_module
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
@@ -299,7 +299,23 @@ def stats_pulse(date: str | None = None) -> dict:
         GROUP BY 1, 2 ORDER BY 1
     """)
     day = rows[0]["ts"].date().isoformat() if rows else date
-    return {"date": day, "count": len(rows), "points": rows}
+    out: dict = {"date": day, "count": len(rows), "points": rows}
+
+    # 同一個星期幾的歷史常態，讓「今天」有比較基準（今天資料還很少時尤其重要）。
+    # hourly 的 empty_rate 是各站在該時段沒車的機率，加總即該時段的期望空站數。
+    if day and settings.HOURLY_PARQUET.exists():
+        isodow = date_module.fromisoformat(day).isoweekday()
+        out["isodow"] = isodow
+        out["baseline"] = db.query(f"""
+            SELECT h.slot,
+                   round(sum(h.empty_rate), 1) AS n_empty,
+                   round(sum(h.full_rate), 1)  AS n_full
+            FROM read_parquet('{settings.HOURLY_PARQUET}') h
+            JOIN {st} s USING (station_id)
+            WHERE h.isodow = {isodow} AND NOT coalesce(s.always_empty, false)
+            GROUP BY 1 ORDER BY 1
+        """)
+    return out
 
 
 @router.get("/stats/districts")

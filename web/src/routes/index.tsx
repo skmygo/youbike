@@ -84,8 +84,9 @@ export function IndexPage() {
         <div className="shrink-0 border-t border-line px-4 py-2">
           <PulseRibbon
             points={pulse.data?.points ?? []}
+            baseline={pulse.data?.baseline}
             currentSlot={currentSlot}
-            label={`全市空滿脈搏 · ${pulse.data?.date ?? ""}`}
+            label={`全市空滿脈搏 · 今日 ${pulse.data?.date ?? ""} 與歷史常態對照`}
           />
         </div>
       </div>

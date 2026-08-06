@@ -17,9 +17,9 @@ const CENTER: [number, number] = [121.51, 25.0]
 const ZOOM = 10.6
 
 const CARTO_TILES = [
-  "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-  "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-  "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+  "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+  "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+  "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
 ]
 
 /** 狀態 → 顏色。MapLibre 的 expression 型別要求固定長度的 tuple，
@@ -30,6 +30,45 @@ const COLOR_BY_STATUS = [
   ...Object.entries(STATUS).flatMap(([k, v]) => [k, v.color]),
   "#48546b",
 ] as unknown as DataDrivenPropertyValueSpecification<string>
+
+type StationGeoJSON = {
+  type: "FeatureCollection"
+  features: Array<{
+    type: "Feature"
+    id: number
+    geometry: { type: "Point"; coordinates: [number, number] }
+    properties: Record<string, string | number>
+  }>
+}
+
+function buildGeoJSON(stations: Station[]): StationGeoJSON {
+  return {
+    type: "FeatureCollection",
+    features: stations
+      .filter((s) => s.lon && s.lat)
+      .map((s) => ({
+        type: "Feature" as const,
+        id: s.station_id,
+        geometry: { type: "Point" as const, coordinates: [s.lon, s.lat] as [number, number] },
+        properties: {
+          station_id: s.station_id,
+          name: s.name,
+          district: s.district ?? "",
+          status: s.status,
+          bikes: s.bikes ?? 0,
+          docks_avail: s.docks_avail ?? 0,
+          docks_total: s.docks_total ?? 0,
+          problem:
+            s.status === "empty" ||
+            s.status === "full" ||
+            s.status === "near_empty" ||
+            s.status === "near_full"
+              ? 1
+              : 0,
+        },
+      })),
+  }
+}
 
 interface Props {
   stations: Station[]
@@ -51,35 +90,11 @@ export function StationMap({
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
 
-  const geojson = useMemo(
-    () => ({
-      type: "FeatureCollection" as const,
-      features: stations
-        .filter((s) => s.lon && s.lat)
-        .map((s) => ({
-          type: "Feature" as const,
-          id: s.station_id,
-          geometry: { type: "Point" as const, coordinates: [s.lon, s.lat] },
-          properties: {
-            station_id: s.station_id,
-            name: s.name,
-            district: s.district ?? "",
-            status: s.status,
-            bikes: s.bikes ?? 0,
-            docks_avail: s.docks_avail ?? 0,
-            docks_total: s.docks_total ?? 0,
-            problem:
-              s.status === "empty" ||
-              s.status === "full" ||
-              s.status === "near_empty" ||
-              s.status === "near_full"
-                ? 1
-                : 0,
-          },
-        })),
-    }),
-    [stations],
-  )
+  const geojsonRef = useRef<StationGeoJSON | null>(null)
+
+  const geojson = useMemo(() => buildGeoJSON(stations), [stations])
+
+  geojsonRef.current = geojson
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -104,6 +119,13 @@ export function StationMap({
       },
     })
     mapRef.current = map
+    if (import.meta.env.DEV) {
+      ;(window as unknown as { __map?: unknown }).__map = map
+    }
+    // style 驗證失敗、tile 抓不到都只走 error 事件（不會 throw），沒接就完全無聲
+    map.on("error", (e) => {
+      console.error("[map]", (e as unknown as { error?: Error }).error ?? e)
+    })
     map.addControl(new NavigationControl({ showCompass: false }), "top-right")
 
     const popup = new Popup({
@@ -113,8 +135,11 @@ export function StationMap({
       maxWidth: "260px",
     })
 
-    map.on("load", () => {
-      map.addSource("stations", { type: "geojson", data: geojson })
+    // MapLibre 的 load 事件在某些初始化順序下不會送達（style 是內嵌物件、
+    // 容器初始高度為 0 都可能），改成「style 好了就裝」並自己防重入。
+    const setup = () => {
+      if (map.getSource("stations")) return
+      map.addSource("stations", { type: "geojson", data: geojsonRef.current ?? geojson })
 
       // 有問題的站加一圈光暈，讓紅／琥珀在縮小視角下也看得見
       map.addLayer({
@@ -197,7 +222,10 @@ export function StationMap({
           onSelectRef.current?.(Number(f.properties.station_id))
         }
       })
-    })
+    }
+
+    if (map.isStyleLoaded()) setup()
+    else map.on("load", setup)
 
     return () => {
       popup.remove()

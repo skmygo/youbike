@@ -10,6 +10,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   base: '/',
   plugins: [react(), tailwindcss()],
+  // maplibre-gl v6 的 worker 是 ES module；Vite 預設把 worker 打成 iife，
+  // 會讓 maplibre-gl-worker 載入失敗（net::ERR_FAILED）。worker 一掛，
+  // GeoJSON source 永遠不會 ready，地圖只剩底圖、站點畫不出來。
+  worker: { format: 'es' },
+  optimizeDeps: { exclude: ['maplibre-gl'] },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

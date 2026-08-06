@@ -180,7 +180,12 @@ export const api = {
   overview: () => get<Overview>("/stats/overview"),
   districts: () => get<{ districts: DistrictRow[] }>("/stats/districts"),
   pulse: (date?: string) =>
-    get<{ date: string; points: PulsePoint[] }>(
+    get<{
+      date: string
+      isodow?: number
+      points: PulsePoint[]
+      baseline?: Array<{ slot: number; n_empty: number; n_full: number }>
+    }>(
       `/stats/pulse${date ? `?date=${date}` : ""}`,
     ),
   hourly: (stationId?: number) =>
