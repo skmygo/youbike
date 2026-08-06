@@ -40,6 +40,13 @@ services:
       - youbike-data:/data
     expose:
       - "3000"
+    # 覆寫 image 內建的 8000 探測（那是 api 用的）
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/server_info"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 5
     networks:
       - dokploy-network
 
