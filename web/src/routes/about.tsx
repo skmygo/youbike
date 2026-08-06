@@ -14,13 +14,13 @@ const PAINS = [
     pain: "只能事後補救",
     detail: "等到站點空了才知道，車派過去往往已經過了尖峰。",
     answer: "預測模型",
-    to: "以歷史型態預測未來 30 分至 3 小時的可借車數與空滿機率。",
+    to: "LightGBM 預測未來 30 分至 3 小時的可借車數與空滿機率，並附 10–90% 區間。6 月測試集上，空車事件平均提前 147 分鐘就點名。",
   },
   {
     pain: "系統不會主動通知",
     detail: "沒有分級警示，也沒有「先救哪一站」的依據。",
-    answer: "警示引擎 + 調度建議",
-    to: "三級規則自動盯場，並依嚴重度與歷史需求排出處理順序。",
+    answer: "警示引擎 + 主動通知 + 調度建議",
+    to: "三級規則自動盯場、第四級由模型預測；新升級的站主動推到 webhook；再把「從哪裡收、補到哪裡」排成可執行的任務單。",
   },
 ]
 
@@ -101,7 +101,37 @@ export function AboutPage() {
               <b className="font-semibold text-ink">判讀品質</b>　有車柱卻同時「沒車也沒位」
               的站會被標成離線，不列入空滿統計——這種站是設備問題，不是調度問題。
             </li>
+            <li>
+              <b className="font-semibold text-ink">模型</b>　1–4 月訓練、5 月驗證、
+              <b className="font-semibold text-ink">6 月完全沒被模型看過</b>當測試。
+              20 個 LightGBM（4 個時距 × 水位回歸／空事件／滿事件／上下分位數），
+              全程進 MLflow。線上推論由排程每 30 分鐘算好寫 parquet，
+              <b className="font-semibold text-ink">API 請求路徑不跑模型</b>。
+              完整指標與限制見<a className="text-st-near underline underline-offset-2" href="/model">預測模型</a>頁。
+            </li>
+            <li>
+              <b className="font-semibold text-ink">主動通知</b>　排程每輪比對，只推「新出現」或
+              「往上升級」為警戒／嚴重的站，持續中的不重複打擾。這裡示範的目的地是自家 webhook，
+              換成 LINE Notify 或簡訊是同一個介面。
+            </li>
+            <li>
+              <b className="font-semibold text-ink">資源紀律</b>　訓練機同時是正式服務主機，
+              重活一律戴資源罩（記憶體 4G／CPU 400%）。半夜真的被 OOM 殺過一次，
+              做法是縮小抽樣規模而不是調大上限。
+            </li>
           </ul>
+        </section>
+
+        <section className="mt-8 mb-4">
+          <p className="eyebrow mb-3">延伸</p>
+          <div className="flex flex-wrap gap-2 text-[12px]">
+            <a className="rounded border border-line bg-panel px-3 py-1.5 text-ink-dim transition-colors hover:text-ink"
+               href="/slides.html">可放映簡報（方向鍵翻頁）</a>
+            <a className="rounded border border-line bg-panel px-3 py-1.5 text-ink-dim transition-colors hover:text-ink"
+               href="/model">回測報告與誠實揭露</a>
+            <a className="rounded border border-line bg-panel px-3 py-1.5 text-ink-dim transition-colors hover:text-ink"
+               href="/api/docs">API 文件</a>
+          </div>
         </section>
       </div>
     </div>

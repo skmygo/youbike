@@ -137,6 +137,11 @@
   新版 OpenSSL 驗不過 → crawl 先走正常驗證、僅憑證錯誤時降級重試
 - ML 切分：1–4 月訓練 / 5 月驗證 / 6 月測試（不洗牌）
 
+## 守夜心跳（§3.6）
+
+- 03:12 全綠：7 個公開端點 200、容器 healthy、Dagster 03:10 準時抓取、available 7G
+- 03:14 MLflow experiment 3 共 30 runs（12 主模型 + 8 分位數 + baseline/回測/KPI），記錄完整
+
 ## 歷程 log
 
 - 2026-08-06 22:35 — 研究完成，MISSION.md / PROGRESS.md 建立
