@@ -66,15 +66,15 @@ export function IndexPage() {
             <div className="grid grid-cols-2 gap-2">
               <Kpi
                 label="可能無車"
-                value={fcMeta.data.meta.alerts_60min?.empty}
+                value={fcMeta.data.meta.watch_60min?.empty ?? fcMeta.data.meta.alerts_60min?.empty}
                 color="#c084fc"
-                hint="模型判定 60 分鐘內無車可借的機率達 70%"
+                hint="模型判定 60 分鐘內可能無車可借（採驗證集最佳門檻）"
               />
               <Kpi
                 label="可能滿位"
-                value={fcMeta.data.meta.alerts_60min?.full}
+                value={fcMeta.data.meta.watch_60min?.full ?? fcMeta.data.meta.alerts_60min?.full}
                 color="#c084fc"
-                hint="模型判定 60 分鐘內無位可還的機率達 70%"
+                hint="模型判定 60 分鐘內可能無位可還（採驗證集最佳門檻）"
               />
             </div>
             {fcMeta.data.backtest_headline?.mae_bikes_60min != null && (

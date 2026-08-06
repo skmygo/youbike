@@ -80,7 +80,8 @@ def load_split(name: str, frac: float = 1.0) -> pd.DataFrame:
     """
     path = ML_DIR / f"features_{name}.parquet"
     targets = [f"{p}{h}" for h in HORIZONS for p in ("y_ratio_", "y_bikes_", "y_docks_", "bl_lastweek_")]
-    sel = [
+    # station_id / ts 訓練用不到，但回測要靠它們找事件、對齊機率，一起帶著（多這兩欄才 26MB）
+    sel = ["station_id", "ts"] + [
         f"CAST({c} AS SMALLINT) AS {c}" if c in CATEGORICAL_COLS else f"CAST({c} AS FLOAT) AS {c}"
         for c in FEATURE_COLS
     ] + [f"CAST({c} AS FLOAT) AS {c}" for c in targets]

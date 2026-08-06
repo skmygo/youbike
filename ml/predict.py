@@ -316,15 +316,33 @@ def load_models() -> dict[str, lgb.Booster]:
     return models
 
 
+def load_thresholds() -> dict:
+    """驗證集上 F1 最佳的門檻（0.10–0.30 之間），當「營運建議」用。
+
+    規劃書定的 0.70 是高信心門檻，精確率高但召回低，長時距幾乎不會觸發；
+    兩組都輸出，讓調度單位自己決定要多敏感（報告裡兩個門檻的表現都有列）。
+    """
+    p = MODEL_DIR / "thresholds.json"
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 def predict(feat: pd.DataFrame) -> pd.DataFrame:
     X = _as_model_frame(feat)
     models = load_models()
+    thresholds = load_thresholds()
     cap = feat["docks_total"].to_numpy(dtype="float64")
     rows = []
     for h in HORIZONS:
         ratio = np.clip(models[f"reg_h{h}"].predict(X), 0.0, 1.0)
         p_empty = models[f"clf_empty_h{h}"].predict(X)
         p_full = models[f"clf_full_h{h}"].predict(X)
+        t_empty = float(thresholds.get(f"clf_empty_h{h}", ALERT_PROBA_THRESHOLD))
+        t_full = float(thresholds.get(f"clf_full_h{h}", ALERT_PROBA_THRESHOLD))
         bikes = np.round(ratio * cap)
         rows.append(pd.DataFrame({
             "station_id": feat["station_id"].to_numpy(),
@@ -340,8 +358,13 @@ def predict(feat: pd.DataFrame) -> pd.DataFrame:
             "pred_docks": np.maximum(cap - bikes, 0).astype("int16"),
             "proba_empty": p_empty.astype("float32"),
             "proba_full": p_full.astype("float32"),
+            # alert_* = 規劃書的 70% 高信心門檻；watch_* = 驗證集最佳 F1 門檻（營運建議）
             "alert_empty": p_empty >= ALERT_PROBA_THRESHOLD,
             "alert_full": p_full >= ALERT_PROBA_THRESHOLD,
+            "watch_empty": p_empty >= t_empty,
+            "watch_full": p_full >= t_full,
+            "thr_empty": np.float32(t_empty),
+            "thr_full": np.float32(t_full),
             "is_live": feat["is_live"].to_numpy(),
         }))
     return pd.concat(rows, ignore_index=True)
@@ -365,14 +388,18 @@ def run() -> dict:
     preds = predict(feat)
     write_atomic(preds, TARGET)
 
-    n_alert_empty = int(preds.loc[preds["horizon"] == 60, "alert_empty"].sum())
-    n_alert_full = int(preds.loc[preds["horizon"] == 60, "alert_full"].sum())
+    at60 = preds["horizon"] == 60
+    n_alert_empty = int(preds.loc[at60, "alert_empty"].sum())
+    n_alert_full = int(preds.loc[at60, "alert_full"].sum())
     meta.update({
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "rows": int(len(preds)),
         "horizons": list(HORIZONS),
         "alert_threshold": ALERT_PROBA_THRESHOLD,
         "alerts_60min": {"empty": n_alert_empty, "full": n_alert_full},
+        "watch_60min": {"empty": int(preds.loc[at60, "watch_empty"].sum()),
+                        "full": int(preds.loc[at60, "watch_full"].sum())},
+        "operational_thresholds": load_thresholds(),
         "elapsed_sec": round(time.time() - t0, 1),
     })
     META_TARGET.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -181,6 +181,10 @@ export interface ForecastRow {
   proba_full: number
   alert_empty: boolean
   alert_full: boolean
+  watch_empty?: boolean
+  watch_full?: boolean
+  thr_empty?: number
+  thr_full?: number
   is_live: boolean
   risk?: number
 }
@@ -194,6 +198,8 @@ export interface ForecastMeta {
   bridged_slot_ratio?: number
   alert_threshold?: number
   alerts_60min?: { empty: number; full: number }
+  watch_60min?: { empty: number; full: number }
+  operational_thresholds?: Record<string, number>
   note?: string
 }
 

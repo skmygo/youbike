@@ -458,11 +458,11 @@ def forecast(
     if district:
         where.append(f"district = '{_q(district)}'")
     if risk_only:
-        where.append("(alert_empty OR alert_full)")
+        where.append("(watch_empty OR watch_full)")
     sql = (
         f"SELECT station_id, name, district, base_ts, horizon, now_bikes, now_docks_avail,"
         f" docks_total, pred_ratio, pred_bikes, pred_docks, proba_empty, proba_full,"
-        f" alert_empty, alert_full, is_live,"
+        f" alert_empty, alert_full, watch_empty, watch_full, thr_empty, thr_full, is_live,"
         f" greatest(proba_empty, proba_full) AS risk"
         f" FROM {src} WHERE {' AND '.join(where)}"
         f" ORDER BY risk DESC, station_id LIMIT {int(limit)}"
@@ -493,7 +493,7 @@ def forecast_station(station_id: int) -> dict:
     rows = db.query(
         f"SELECT horizon, base_ts, now_bikes, now_docks_avail, docks_total,"
         f" pred_ratio, pred_bikes, pred_docks, proba_empty, proba_full,"
-        f" alert_empty, alert_full"
+        f" alert_empty, alert_full, watch_empty, watch_full, thr_empty, thr_full"
         f" FROM {src} WHERE station_id = {int(station_id)} ORDER BY horizon"
     )
     return {"station_id": station_id, "meta": _forecast_meta(), "forecast": rows}
@@ -503,6 +503,7 @@ def forecast_station(station_id: int) -> dict:
 def forecast_alerts(
     horizon: int = Query(60),
     district: str | None = None,
+    mode: str = Query("operational", description="operational=驗證集最佳門檻 / strict=規劃書的 70%"),
     limit: int = Query(200, ge=1, le=1000),
 ) -> dict:
     """預測型警示（WP4 第四級）：模型判定 horizon 分鐘內空/滿機率達門檻的站。
@@ -512,7 +513,8 @@ def forecast_alerts(
     src = _forecast_sql()
     if not src:
         return {"count": 0, "horizon": horizon, "alerts": [], "meta": {}}
-    where = [f"horizon = {int(horizon)}", "(alert_empty OR alert_full)"]
+    flag = "alert" if mode == "strict" else "watch"
+    where = [f"horizon = {int(horizon)}", f"({flag}_empty OR {flag}_full)"]
     if district:
         where.append(f"district = '{_q(district)}'")
     rows = db.query(
@@ -523,7 +525,8 @@ def forecast_alerts(
         f" FROM {src} WHERE {' AND '.join(where)}"
         f" ORDER BY proba DESC LIMIT {int(limit)}"
     )
-    return {"count": len(rows), "horizon": horizon, "meta": _forecast_meta(), "alerts": rows}
+    return {"count": len(rows), "horizon": horizon, "mode": mode,
+            "meta": _forecast_meta(), "alerts": rows}
 
 
 @router.get("/dispatch")
@@ -569,13 +572,13 @@ def dispatch(
                    f.pred_bikes, f.proba_empty, s.lon, s.lat,
                    greatest(3, ceil(f.docks_total * 0.35) - f.pred_bikes)::INT AS need_bikes
             FROM f JOIN st s USING (station_id)
-            WHERE f.alert_empty{dis}
+            WHERE f.watch_empty{dis}
         ), surplus AS (
             SELECT f.station_id, f.name, f.district, f.docks_total,
                    f.pred_bikes, f.proba_full, s.lon, s.lat,
                    greatest(3, f.pred_bikes - floor(f.docks_total * 0.65))::INT AS spare_bikes
             FROM f JOIN st s USING (station_id)
-            WHERE f.alert_full
+            WHERE f.watch_full
         ), paired AS (
             SELECT n.station_id AS to_station, n.name AS to_name, n.district,
                    n.now_bikes, n.pred_bikes AS to_pred_bikes, n.docks_total AS to_capacity,

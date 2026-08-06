@@ -42,6 +42,8 @@ export function DispatchPage() {
             配上同時段可能滿位、可以出車的站，湊成一趟「收 N 台 → 補到那裡」。
             目標水位取安全帶兩端：補到 <span className="num">35%</span>、收到{" "}
             <span className="num">65%</span>，一趟車同時解掉兩個問題。
+            風險門檻用驗證集上 F1 最佳的值（各時距不同），比規劃書的 70% 敏感，
+            換到的是<b className="font-normal text-ink">來得及出車的前置時間</b>。
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">

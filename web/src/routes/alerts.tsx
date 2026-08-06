@@ -64,7 +64,9 @@ export function AlertsPage() {
               <>
                 規則型看的是<b className="font-normal text-ink">已經發生</b>的事，
                 這裡看的是<b className="font-normal text-ink">還沒發生</b>的事：
-                LightGBM 判定該站 {horizon} 分鐘內無車或無位的機率達 70% 就進榜，
+                LightGBM 判定該站 {horizon} 分鐘內可能無車或無位就進榜。
+                門檻取<b className="font-normal text-ink">驗證集上 F1 最佳的值</b>（各時距不同，約 10–30%），
+                而不是規劃書那個偏保守的 70%——70% 幾乎只在事情快發生時才會亮，來不及派車。
                 排程每 30 分鐘重算一次。
               </>
             )}
