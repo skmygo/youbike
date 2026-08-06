@@ -10,6 +10,7 @@ const NAV = [
   { to: "/alerts", label: "警示" },
   { to: "/dispatch", label: "調度建議" },
   { to: "/districts", label: "區域分析" },
+  { to: "/model", label: "預測模型" },
   { to: "/about", label: "關於" },
 ]
 

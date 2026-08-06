@@ -6,6 +6,7 @@ import { ReplayPage } from "@/routes/replay"
 import { AlertsPage } from "@/routes/alerts"
 import { DispatchPage } from "@/routes/dispatch"
 import { DistrictsPage } from "@/routes/districts"
+import { ModelPage } from "@/routes/model"
 import { AboutPage } from "@/routes/about"
 
 const rootRoute = createRootRoute({
@@ -42,6 +43,12 @@ const districtsRoute = createRoute({
   component: DistrictsPage,
 })
 
+const modelRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/model",
+  component: ModelPage,
+})
+
 const aboutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/about",
@@ -54,6 +61,7 @@ const routeTree = rootRoute.addChildren([
   alertsRoute,
   dispatchRoute,
   districtsRoute,
+  modelRoute,
   aboutRoute,
 ])
 

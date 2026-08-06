@@ -3,20 +3,29 @@ import { useQuery } from "@tanstack/react-query"
 
 import { StationDrawer } from "@/components/StationDrawer"
 import { api } from "@/lib/api"
-import type { AlertLevel } from "@/lib/api"
-import { KIND_LABEL, LEVEL, fmtDuration, fmtTime } from "@/lib/status"
+import type { AlertLevel, ForecastAlert } from "@/lib/api"
+import { KIND_LABEL, LEVEL, fmtClock, fmtDuration, fmtTime } from "@/lib/status"
 
 const LEVELS: AlertLevel[] = ["critical", "warning", "notice"]
+const FC_HORIZONS = [30, 60, 120, 180] as const
 
 export function AlertsPage() {
   const [level, setLevel] = useState<AlertLevel | "all">("all")
   const [district, setDistrict] = useState<string>("all")
   const [selected, setSelected] = useState<number | null>(null)
+  const [mode, setMode] = useState<"now" | "forecast">("now")
+  const [horizon, setHorizon] = useState<number>(60)
 
   const alerts = useQuery({
     queryKey: ["alerts"],
     queryFn: api.alerts,
     refetchInterval: 60_000,
+  })
+  const fcAlerts = useQuery({
+    queryKey: ["forecast-alerts", horizon],
+    queryFn: () => api.forecastAlerts(horizon),
+    refetchInterval: 120_000,
+    enabled: mode === "forecast",
   })
 
   const rows = alerts.data?.alerts ?? []
@@ -43,14 +52,71 @@ export function AlertsPage() {
           <p className="eyebrow">警示引擎 · WP4</p>
           <h1 className="mt-1 text-[19px] font-semibold">現在有哪些站需要處理</h1>
           <p className="mt-1 max-w-[62ch] text-[12px] leading-relaxed text-ink-dim">
-            分級規則直接對應命題痛點「系統不會主動通知機關」：
-            可借或可還剩 2 台以內是<b className="font-normal text-ink">注意</b>；
-            已空或已滿是<b className="font-normal text-ink">警戒</b>；
-            持續 60 分鐘以上是<b className="font-normal text-ink">嚴重</b>。
-            資料每 10 分鐘由排程重算。
+            {mode === "now" ? (
+              <>
+                分級規則直接對應命題痛點「系統不會主動通知機關」：
+                可借或可還剩 2 台以內是<b className="font-normal text-ink">注意</b>；
+                已空或已滿是<b className="font-normal text-ink">警戒</b>；
+                持續 60 分鐘以上是<b className="font-normal text-ink">嚴重</b>。
+                資料每 10 分鐘由排程重算。
+              </>
+            ) : (
+              <>
+                規則型看的是<b className="font-normal text-ink">已經發生</b>的事，
+                這裡看的是<b className="font-normal text-ink">還沒發生</b>的事：
+                LightGBM 判定該站 {horizon} 分鐘內無車或無位的機率達 70% 就進榜，
+                排程每 30 分鐘重算一次。
+              </>
+            )}
           </p>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="mt-3 flex items-center gap-1.5">
+            {([
+              ["now", "現況"],
+              ["forecast", "預測"],
+            ] as const).map(([m, label]) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={`rounded border px-2.5 py-1 text-[12px] transition-colors ${
+                  mode === m
+                    ? "border-line bg-panel-2 text-ink"
+                    : "border-line-soft text-ink-dim hover:text-ink"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+            {mode === "forecast" && (
+              <>
+                <span className="ml-1 text-[11px] text-ink-faint">時距</span>
+                {FC_HORIZONS.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => setHorizon(h)}
+                    className={`rounded border px-2 py-0.5 text-[12px] transition-colors ${
+                      horizon === h
+                        ? "border-line bg-panel-2 text-ink"
+                        : "border-line-soft text-ink-dim hover:text-ink"
+                    }`}
+                  >
+                    <span className="num">{h}</span>
+                  </button>
+                ))}
+                {fcAlerts.data?.meta?.base_ts && (
+                  <span className="ml-2 text-[11px] text-ink-faint">
+                    預測基準 {fmtClock(fcAlerts.data.meta.base_ts)}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+
+          <div
+            className={`mt-3 flex flex-wrap items-center gap-2 ${mode === "forecast" ? "hidden" : ""}`}
+          >
             {(["all", ...LEVELS] as const).map((lv) => (
               <button
                 key={lv}
@@ -91,6 +157,16 @@ export function AlertsPage() {
         </header>
 
         <div className="min-h-0 flex-1 overflow-auto">
+          {mode === "forecast" ? (
+            <ForecastTable
+              rows={fcAlerts.data?.alerts ?? []}
+              loading={fcAlerts.isLoading}
+              horizon={horizon}
+              selected={selected}
+              onSelect={setSelected}
+            />
+          ) : (
+          <>
           <table className="w-full text-[12px]">
             <thead className="sticky top-0 z-10 bg-void">
               <tr className="border-b border-line text-left">
@@ -151,11 +227,84 @@ export function AlertsPage() {
               這個條件下目前沒有站點需要處理。
             </p>
           )}
+          </>
+          )}
         </div>
       </div>
 
       <StationDrawer stationId={selected} onClose={() => setSelected(null)} />
     </div>
+  )
+}
+
+function ForecastTable({
+  rows,
+  loading,
+  horizon,
+  selected,
+  onSelect,
+}: {
+  rows: ForecastAlert[]
+  loading: boolean
+  horizon: number
+  selected: number | null
+  onSelect: (id: number) => void
+}) {
+  if (loading) {
+    return <p className="py-10 text-center text-xs text-ink-faint">推論結果載入中…</p>
+  }
+  if (rows.length === 0) {
+    return (
+      <p className="py-10 text-center text-xs text-ink-faint">
+        {horizon} 分鐘內沒有站點達到 70% 預警門檻，或排程還沒產生第一份預測。
+      </p>
+    )
+  }
+  return (
+    <table className="w-full text-[12px]">
+      <thead className="sticky top-0 z-10 bg-void">
+        <tr className="border-b border-line text-left">
+          <Th>預警</Th>
+          <Th>站點</Th>
+          <Th>行政區</Th>
+          <Th right>機率</Th>
+          <Th right>現在可借</Th>
+          <Th right>{horizon} 分後預測可借</Th>
+          <Th right>車柱</Th>
+          <Th right>預測基準</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((a) => {
+          const color = a.proba >= 0.9 ? "#ff5c5c" : a.proba >= 0.8 ? "#ffb020" : "#c084fc"
+          return (
+            <tr
+              key={`${a.station_id}-${a.kind}`}
+              onClick={() => onSelect(a.station_id)}
+              className={`cursor-pointer border-b border-line-soft transition-colors hover:bg-panel ${
+                selected === a.station_id ? "bg-panel" : ""
+              }`}
+            >
+              <td className="px-4 py-1.5">
+                <span className="inline-flex items-center gap-1.5" style={{ color }}>
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+                  {a.kind === "empty" ? "可能無車" : "可能滿位"}
+                </span>
+              </td>
+              <td className="px-4 py-1.5 text-ink">{a.name}</td>
+              <td className="px-4 py-1.5 text-ink-dim">{a.district}</td>
+              <td className="num px-4 py-1.5 text-right" style={{ color }}>
+                {(a.proba * 100).toFixed(0)}%
+              </td>
+              <td className="num px-4 py-1.5 text-right">{a.now_bikes}</td>
+              <td className="num px-4 py-1.5 text-right text-ink">{a.pred_bikes}</td>
+              <td className="num px-4 py-1.5 text-right text-ink-faint">{a.docks_total}</td>
+              <td className="num px-4 py-1.5 text-right text-ink-faint">{fmtTime(a.base_ts)}</td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
   )
 }
 

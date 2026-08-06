@@ -247,15 +247,73 @@ export interface BacktestHeadline {
   n_full_events_june: number
 }
 
+export interface RegMetric {
+  mae_ratio: number
+  rmse_ratio: number
+  mae_bikes: number
+  n: number
+  improve_vs_persistence_pct?: number
+  improve_vs_lastweek_pct?: number
+}
+
+export interface PrfMetric {
+  precision: number
+  recall: number
+  f1: number
+  tp: number
+  fp: number
+  fn: number
+  threshold?: number
+}
+
+export interface ClfMetric {
+  pos_rate: number
+  pr_auc: number
+  roc_auc: number
+  at_alert_threshold: PrfMetric
+  at_valid_best_f1: PrfMetric
+  persistence_rule: PrfMetric
+}
+
+export interface EventMetric {
+  n_events: number
+  detected?: number
+  coverage?: number
+  mean_lead_minutes?: number
+  median_lead_minutes?: number
+  lead_distribution?: Record<string, number>
+  missed?: number
+  threshold?: number
+  alerts_fired?: number
+  false_alarms?: number
+  false_alarm_rate?: number
+  alerts_per_station_per_day?: number
+  baseline_rule_lead_minutes?: number
+}
+
 export interface ModelReport {
   available: boolean
   generated_at?: string
-  data?: Record<string, unknown>
-  model?: Record<string, unknown>
-  regression?: Record<string, Record<string, { mae_bikes: number; mae_ratio: number; improve_vs_persistence_pct?: number }>>
-  classification?: Record<string, Record<string, Record<string, unknown>>>
-  events?: Record<string, Record<string, number>>
-  valid_baselines?: Record<string, unknown>
+  task?: string
+  data?: {
+    history_range?: [string, string]
+    slot_minutes?: number
+    split?: Record<string, [string, string]>
+    rows?: Record<string, number>
+    stations?: number
+    n_features?: number
+    detected_holidays?: string[]
+  }
+  model?: {
+    algorithm?: string
+    regression_objective?: string
+    horizons_minutes?: number[]
+    categorical_features?: string[]
+    best_iterations?: Record<string, number>
+  }
+  regression?: Record<string, Record<"lgbm" | "persistence" | "lastweek", RegMetric>>
+  classification?: Record<"empty" | "full", Record<string, ClfMetric>>
+  events?: Record<"empty" | "full", EventMetric>
   feature_importance?: Record<string, Array<{ feature: string; gain: number }>>
   headline?: BacktestHeadline
 }
