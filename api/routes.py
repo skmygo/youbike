@@ -533,6 +533,7 @@ def forecast_alerts(
 def dispatch(
     horizon: int = Query(60, description="以哪個時距的預測擬定調度"),
     district: str | None = None,
+    max_km: float = Query(3.0, ge=0.2, le=30.0, description="配對出車站的最遠距離"),
     limit: int = Query(50, ge=1, le=300),
 ) -> dict:
     """調度建議清單（WP5）。
@@ -587,7 +588,11 @@ def dispatch(
                    p.spare_bikes, p.proba_full,
                    111.0 * sqrt(pow(n.lat - p.lat, 2)
                         + pow((n.lon - p.lon) * cos(radians(n.lat)), 2)) AS distance_km
-            FROM need n LEFT JOIN surplus p ON p.station_id <> n.station_id
+            FROM need n LEFT JOIN surplus p
+                 ON p.station_id <> n.station_id
+                 -- 太遠就不配：跨半個新北去收 3 台車不是可執行的調度
+                 AND 111.0 * sqrt(pow(n.lat - p.lat, 2)
+                      + pow((n.lon - p.lon) * cos(radians(n.lat)), 2)) <= {float(max_km)}
             QUALIFY row_number() OVER (
                 PARTITION BY n.station_id ORDER BY distance_km NULLS LAST) = 1
         )
@@ -606,8 +611,10 @@ def dispatch(
     return {
         "count": len(rows), "mode": "forecast", "horizon": horizon,
         "total_move_bikes": total_move,
+        "max_km": max_km,
         "meta": {**_forecast_meta(),
-                 "note": "每個缺車站配最近的一個滿位站；同一來源站可能出現在多筆任務中"},
+                 "note": f"每個缺車站配 {max_km} 公里內最近的一個滿位站；"
+                         f"配不到就標示需由調度中心出車。同一來源站可能出現在多筆任務中"},
         "tasks": rows,
     }
 

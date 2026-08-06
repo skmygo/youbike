@@ -4,11 +4,16 @@
 
 ## 狀態塊
 
-- **當前 milestone**：M4 收尾中（特徵庫 ✅、12 模型訓練中）+ M5 程式碼已寫完（待模型就位後驗證）；
-  資源罩全程有效，峰值 1.88G/4G，production 容器全程健在
-- **M4 訓練結果（驗證集 5 月，LightGBM vs persistence MAE 台車）**：
-  h30 1.630/1.671 **+2.4%** ｜ h60 2.286/2.492 **+8.3%** ｜ h120 2.991/3.582 **+16.5%** ｜ h180 3.383/4.394 **+23.0%**
-  （lastweek baseline 5.44 全面墊底；時距越長模型優勢越大＝合理且好講的故事）
+- **當前 milestone**：**M4 ✅ 完成**（02:08 回測落地）；M5 程式碼完成且本機驗過，**只差部署驗證**
+  （docker build 中 → 容器驗證 → compose-deploy → 公開網址）。資源罩全程有效，峰值 1.88G/4G，production 容器全程健在
+- **M4 回測結果（6 月測試集，訓練/驗證完全沒碰過）**：
+  - 水位 MAE（台車）LightGBM/persistence：h30 1.442/1.466 **+1.6%**｜h60 2.052/2.213 **+7.3%**｜
+    h120 2.746/3.229 **+15.0%**｜h180 3.154/3.992 **+21.0%**（lastweek 5.54 全面墊底）
+  - 事件級預警（**營運門檻**＝驗證集最佳 F1，0.10–0.30）：空車 35,450 起偵測 **68.1%**、平均提前 **147 分**、
+    誤報 52.2%、每站每天 22.3 次候選；滿位 3,909 起偵測 51.0%、提前 134 分、誤報 72.9%
+  - 同一組事件用規劃書的 **70% 門檻**：空車偵測只剩 6.5%、誤報 17.5% → 少擾民但來不及派車
+    ⇒ 系統雙軌輸出（`alert_*` 70% ／ `watch_*` 營運門檻），`/dispatch` 與預測型警示用後者 + Top-N 排序消化警報量
+  - 規則型警示的提前量恆為 0 分（事發才知道）＝模型的增量價值
 - **公開網址**：`https://youbike.itsmygo.uk` — ✅ 五頁全上線（即時指揮／回放／警示／區域分析／關於）；
   00:15 health/meta 正常，dagster 最新快照 00:10 落地
 - **Dagster**：✅ `https://youbike-dagster.itsmygo.uk`（CF Access 336h），schedule `realtime_every_10min` RUNNING
@@ -73,7 +78,11 @@
   - ✅ API `/forecast` `/forecast/meta` `/forecast/station/{id}` `/forecast/alerts` `/dispatch`（含無模型時的規則型降級）`/model/report`
   - ✅ 前端：`/dispatch` 調度建議頁（新）、站點抽屜預測帶（虛線接在 7 天曲線尾端）+ 四時距卡片、首頁「未來一小時」KPI
   - ✅ Dockerfile 加 `--extra infer`（只裝 lightgbm）、`ml/upload_models.py`（模型+4 張輔助表 → S3 `models/`）
-  - [ ] 待做：跑 upload_models → 部署 → 公開網址驗證 forecast 端到端
+  - ✅ 模型 19 檔 58MB 已上 S3 `models/`；**修好 entrypoint「歷史已存在就整段跳過 bootstrap」**
+    （否則新模型永遠進不了容器）＋ bootstrap 對 `models/` 每次取最新
+  - ✅ 本機容器驗證全綠：health / forecast/meta / forecast/alerts / dispatch / model/report 全通，
+    三頁截圖正常（首頁預測 KPI 228・11、/dispatch 任務表、/model 回測頁）
+  - [ ] 待做：push → compose-deploy → 公開網址驗收
 - [ ] **M6**（04:15–05:45）KPI hero（回測數字 + KPI1 模擬調度改善）+ /model 頁 + README + 簡報大綱.md
 - [ ] **S**（05:45–07:45）加分梯隊 S1–S5（MISSION §3.5，一次一項）→ 守夜模式（§3.6）
 - [ ] **M7**（07:45–08:00）最終 push + 部署驗證 + SUMMARY.md → stop

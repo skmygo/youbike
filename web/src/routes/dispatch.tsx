@@ -44,6 +44,7 @@ export function DispatchPage() {
             <span className="num">65%</span>，一趟車同時解掉兩個問題。
             風險門檻用驗證集上 F1 最佳的值（各時距不同），比規劃書的 70% 敏感，
             換到的是<b className="font-normal text-ink">來得及出車的前置時間</b>。
+            出車站只在 <span className="num">3</span> 公里內配對，配不到就標示需由調度中心出車。
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
