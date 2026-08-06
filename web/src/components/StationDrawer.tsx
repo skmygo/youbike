@@ -38,14 +38,29 @@ export function StationDrawer({ stationId, onClose }: Props) {
   const fc = forecast.data?.forecast ?? []
   // 預測折線：從基準時刻的實際車數出發，往後接 4 個時距的預測值
   const base = fc[0]?.base_ts
+  const at = (h: number) => new Date(new Date(base).getTime() + h * 60_000).toISOString()
   const predPoints = base
     ? [
         [base, fc[0].now_bikes] as [string, number],
+        ...fc.map((f) => [at(f.horizon), f.pred_bikes] as [string, number]),
+      ]
+    : []
+  // 10%–90% 分位數區間：ECharts 用「下界 + 帶寬」兩條 stack 起來畫成帶
+  const hasBand = base != null && fc.some((f) => f.pred_bikes_hi != null)
+  const loPoints = hasBand
+    ? [
+        [base, fc[0].now_bikes] as [string, number],
+        ...fc.map((f) => [at(f.horizon), f.pred_bikes_lo ?? f.pred_bikes] as [string, number]),
+      ]
+    : []
+  const bandPoints = hasBand
+    ? [
+        [base, 0] as [string, number],
         ...fc.map(
           (f) =>
             [
-              new Date(new Date(base).getTime() + f.horizon * 60_000).toISOString(),
-              f.pred_bikes,
+              at(f.horizon),
+              Math.max((f.pred_bikes_hi ?? f.pred_bikes) - (f.pred_bikes_lo ?? f.pred_bikes), 0),
             ] as [string, number],
         ),
       ]
@@ -139,6 +154,30 @@ export function StationDrawer({ stationId, onClose }: Props) {
                     areaStyle: { color: "rgba(33,208,165,0.10)" },
                     data: points.map((p) => [p.ts, p.bikes]),
                   },
+                  ...(hasBand
+                    ? [
+                        {
+                          type: "line",
+                          name: "區間下界",
+                          stack: "band",
+                          symbol: "none",
+                          silent: true,
+                          lineStyle: { opacity: 0 },
+                          tooltip: { show: false },
+                          data: loPoints,
+                        },
+                        {
+                          type: "line",
+                          name: "預測區間 10–90%",
+                          stack: "band",
+                          symbol: "none",
+                          silent: true,
+                          lineStyle: { opacity: 0 },
+                          areaStyle: { color: "rgba(192,132,252,0.18)" },
+                          data: bandPoints,
+                        },
+                      ]
+                    : []),
                   {
                     type: "line",
                     name: "模型預測",
@@ -148,6 +187,7 @@ export function StationDrawer({ stationId, onClose }: Props) {
                     lineStyle: { width: 1.2, color: "#c084fc", type: "dashed" },
                     itemStyle: { color: "#c084fc" },
                     data: predPoints,
+                    z: 5,
                   },
                 ],
               }}
@@ -171,6 +211,11 @@ export function StationDrawer({ stationId, onClose }: Props) {
                   >
                     <p className="eyebrow">+{f.horizon}分</p>
                     <p className="num mt-0.5 text-[17px] leading-none text-ink">{f.pred_bikes}</p>
+                    {f.pred_bikes_hi != null && f.pred_bikes_lo != null && (
+                      <p className="num mt-0.5 text-[10px] text-ink-faint">
+                        {f.pred_bikes_lo}–{f.pred_bikes_hi}
+                      </p>
+                    )}
                     <p
                       className="num mt-1 text-[10px]"
                       style={{ color: alert ? "#ff5c5c" : "var(--ink-faint)" }}
@@ -182,8 +227,9 @@ export function StationDrawer({ stationId, onClose }: Props) {
               })}
             </div>
             <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
-              數字是預測的<b className="font-normal text-ink-dim">可借車數</b>，下面一行是該時距
-              「無車／無位」的機率；達 70% 會進預測型警示。
+              大字是預測的<b className="font-normal text-ink-dim">可借車數</b>，
+              底下小字是 10–90% 分位數區間（模型認為八成機會落在這個範圍），
+              最下面是該時距「無車／無位」的機率。
             </p>
           </section>
         )}

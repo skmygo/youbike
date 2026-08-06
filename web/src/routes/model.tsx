@@ -180,6 +180,58 @@ export function ModelPage() {
           </div>
         </section>
 
+        {/* 預測區間（S2） */}
+        {r.quantile && (
+          <section>
+            <h2 className="eyebrow mb-2">預測區間 · 10–90% 分位數（驗證集實測覆蓋率）</h2>
+            <div className="rounded border border-line bg-panel p-3">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-line-soft text-left">
+                    <Th>時距</Th>
+                    <Th right>實際覆蓋率</Th>
+                    <Th right>目標</Th>
+                    <Th right>平均帶寬</Th>
+                    <Th right>上下界交叉</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {HORIZONS.map((h) => {
+                    const q = r.quantile?.[h]
+                    if (!q) return null
+                    const off = Math.abs(q.coverage - q.target_coverage)
+                    return (
+                      <tr key={h} className="border-b border-line-soft">
+                        <td className="px-3 py-1.5 text-ink-dim">{h} 分後</td>
+                        <td
+                          className="num px-3 py-1.5 text-right"
+                          style={{ color: off <= 0.05 ? "#21d0a5" : off <= 0.1 ? "#ffb020" : "#ff5c5c" }}
+                        >
+                          {(q.coverage * 100).toFixed(1)}%
+                        </td>
+                        <td className="num px-3 py-1.5 text-right text-ink-faint">
+                          {(q.target_coverage * 100).toFixed(0)}%
+                        </td>
+                        <td className="num px-3 py-1.5 text-right text-ink-dim">
+                          {q.mean_width_bikes.toFixed(1)} 台
+                        </td>
+                        <td className="num px-3 py-1.5 text-right text-ink-faint">
+                          {(q.crossed_rate * 100).toFixed(2)}%
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
+                點預測旁邊給區間，是為了讓調度員知道「這個數字有多可信」。
+                兩個分位數模型各自訓練，不保證下界一定小於上界（交叉率就是量這件事），
+                畫圖前會先排序再用。覆蓋率離 80% 越近，代表區間越誠實——太寬沒有資訊、太窄會騙人。
+              </p>
+            </div>
+          </section>
+        )}
+
         {/* 事件級預警 */}
         {ev && (
           <section>

@@ -462,7 +462,8 @@ def forecast(
         where.append("(watch_empty OR watch_full)")
     sql = (
         f"SELECT station_id, name, district, base_ts, horizon, now_bikes, now_docks_avail,"
-        f" docks_total, pred_ratio, pred_bikes, pred_docks, proba_empty, proba_full,"
+        f" docks_total, pred_ratio, pred_bikes, pred_bikes_lo, pred_bikes_hi, pred_docks,"
+        f" proba_empty, proba_full,"
         f" alert_empty, alert_full, watch_empty, watch_full, thr_empty, thr_full, is_live,"
         f" greatest(proba_empty, proba_full) AS risk"
         f" FROM {src} WHERE {' AND '.join(where)}"
@@ -493,7 +494,8 @@ def forecast_station(station_id: int) -> dict:
         return {"station_id": station_id, "forecast": [], "meta": {}}
     rows = db.query(
         f"SELECT horizon, base_ts, now_bikes, now_docks_avail, docks_total,"
-        f" pred_ratio, pred_bikes, pred_docks, proba_empty, proba_full,"
+        f" pred_ratio, pred_bikes, pred_bikes_lo, pred_bikes_hi, pred_docks,"
+        f" proba_empty, proba_full,"
         f" alert_empty, alert_full, watch_empty, watch_full, thr_empty, thr_full"
         f" FROM {src} WHERE station_id = {int(station_id)} ORDER BY horizon"
     )
@@ -696,6 +698,13 @@ def model_report() -> dict:
         report = json.loads(settings.REPORT_JSON.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {"available": False}
+    # S2 的分位數區間覆蓋率（有訓練才附上）
+    qs = settings.MODEL_DIR / "quantile_summary.json"
+    if qs.exists():
+        try:
+            report["quantile"] = json.loads(qs.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
     return {"available": True, **report}
 
 

@@ -317,6 +317,17 @@ def load_models() -> dict[str, lgb.Booster]:
     return models
 
 
+def load_quantile_models() -> dict[str, lgb.Booster]:
+    """10%/90% 分位數模型（S2）。沒訓練就回空，預測帶會退化成一條線。"""
+    out = {}
+    for h in HORIZONS:
+        for q in (10, 90):
+            p = MODEL_DIR / f"lgbm_reg_q{q}_h{h}.txt"
+            if p.exists():
+                out[f"q{q}_h{h}"] = lgb.Booster(model_file=str(p))
+    return out
+
+
 def load_thresholds() -> dict:
     """驗證集上 F1 最佳的門檻（0.10–0.30 之間），當「營運建議」用。
 
@@ -335,11 +346,21 @@ def load_thresholds() -> dict:
 def predict(feat: pd.DataFrame) -> pd.DataFrame:
     X = _as_model_frame(feat)
     models = load_models()
+    qmodels = load_quantile_models()
     thresholds = load_thresholds()
     cap = feat["docks_total"].to_numpy(dtype="float64")
     rows = []
     for h in HORIZONS:
         ratio = np.clip(models[f"reg_h{h}"].predict(X), 0.0, 1.0)
+        if f"q10_h{h}" in qmodels and f"q90_h{h}" in qmodels:
+            r_lo = np.clip(qmodels[f"q10_h{h}"].predict(X), 0.0, 1.0)
+            r_hi = np.clip(qmodels[f"q90_h{h}"].predict(X), 0.0, 1.0)
+            # 兩個分位數模型各訓各的，不保證 lo ≤ hi；排好再用
+            r_lo, r_hi = np.minimum(r_lo, r_hi), np.maximum(r_lo, r_hi)
+            # 點預測若落在區間外（不同目標函數所致），把區間撐開包住它
+            r_lo, r_hi = np.minimum(r_lo, ratio), np.maximum(r_hi, ratio)
+        else:
+            r_lo = r_hi = ratio
         p_empty = models[f"clf_empty_h{h}"].predict(X)
         p_full = models[f"clf_full_h{h}"].predict(X)
         t_empty = float(thresholds.get(f"clf_empty_h{h}", ALERT_PROBA_THRESHOLD))
@@ -357,6 +378,9 @@ def predict(feat: pd.DataFrame) -> pd.DataFrame:
             "pred_ratio": ratio.astype("float32"),
             "pred_bikes": bikes.astype("int16"),
             "pred_docks": np.maximum(cap - bikes, 0).astype("int16"),
+            # S2 預測區間（10%–90% 分位數）
+            "pred_bikes_lo": np.round(r_lo * cap).astype("int16"),
+            "pred_bikes_hi": np.round(r_hi * cap).astype("int16"),
             "proba_empty": p_empty.astype("float32"),
             "proba_full": p_full.astype("float32"),
             # alert_* = 規劃書的 70% 高信心門檻；watch_* = 驗證集最佳 F1 門檻（營運建議）
@@ -401,6 +425,7 @@ def run() -> dict:
         "watch_60min": {"empty": int(preds.loc[at60, "watch_empty"].sum()),
                         "full": int(preds.loc[at60, "watch_full"].sum())},
         "operational_thresholds": load_thresholds(),
+        "has_interval": bool(load_quantile_models()),
         "elapsed_sec": round(time.time() - t0, 1),
     })
     META_TARGET.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")

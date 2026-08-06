@@ -99,7 +99,10 @@
 - [~] **加分梯隊**（提前開工）
   - [x] **S1 主動通知管道**：dagster `alert_notifications`（只推新升級、cold start 不爆量、
         webhook URL 走 env）+ API `POST/GET /api/notify/log`（JSONL，留最近 500 筆）+ 警示頁通知紀錄小卡
-  - [ ] S2 預測不確定帶（45 分）｜S3 天氣特徵（60 分）｜S4 簡報 slides（45 分）｜S5 demo GIF（30 分）
+  - [~] **S2 預測不確定帶**進行中：`ml/train_quantile.py`（q10/q90 × 4 時距，量驗證集實際覆蓋率）
+        訓練中；predict 輸出 `pred_bikes_lo/hi`、API 帶出、站點抽屜畫成真的帶（ECharts stack）、
+        /model 頁加「預測區間覆蓋率」表；**待訓練完成 → 上傳 → build → 部署**
+  - [ ] S3 天氣特徵（60 分）｜S4 簡報 slides（45 分）｜S5 demo GIF（30 分）
 - [ ] **M7**（07:45–08:00）最終 push + 部署驗證 + SUMMARY.md → stop
 
 ## 資料事實（給後續 milestone 直接引用）

@@ -176,6 +176,8 @@ export interface ForecastRow {
   docks_total: number
   pred_ratio: number
   pred_bikes: number
+  pred_bikes_lo?: number
+  pred_bikes_hi?: number
   pred_docks: number
   proba_empty: number
   proba_full: number
@@ -200,6 +202,7 @@ export interface ForecastMeta {
   alerts_60min?: { empty: number; full: number }
   watch_60min?: { empty: number; full: number }
   operational_thresholds?: Record<string, number>
+  has_interval?: boolean
   note?: string
 }
 
@@ -327,6 +330,12 @@ export interface ModelReport {
     at_alert_threshold: EventMetric
   }>
   feature_importance?: Record<string, Array<{ feature: string; gain: number }>>
+  quantile?: Record<string, {
+    coverage: number
+    target_coverage: number
+    mean_width_bikes: number
+    crossed_rate: number
+  }>
   headline?: BacktestHeadline
 }
 
