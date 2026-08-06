@@ -4,11 +4,12 @@
 
 ## 狀態塊
 
-- **當前 milestone**：M4（ML：特徵庫 + baseline + LightGBM + MLflow + 6 月回測）— M0–M3 已完成
-- **公開網址**：`https://youbike.itsmygo.uk` — ✅ 五頁全上線（即時指揮／回放／警示／區域分析／關於），
-  已用本機 headless Chrome 對公開網址實測通過
-- **Dagster**：✅ `https://youbike-dagster.itsmygo.uk`（CF Access 336h），schedule `realtime_every_10min` RUNNING，23:30 首次準時觸發
-- **MLflow experiment**：❌ 尚未建立（目標：`youbike-hackathon` @ http://192.168.50.190:5000）
+- **當前 milestone**：M4（ML：特徵庫 + baseline + LightGBM + MLflow + 6 月回測）— 新基準 00:15–02:15
+- **公開網址**：`https://youbike.itsmygo.uk` — ✅ 五頁全上線（即時指揮／回放／警示／區域分析／關於）；
+  00:15 health/meta 正常，dagster 最新快照 00:10 落地
+- **Dagster**：✅ `https://youbike-dagster.itsmygo.uk`（CF Access 336h），schedule `realtime_every_10min` RUNNING
+- **MLflow experiment**：❌ 尚未建立（服務 00:20 ping 200；目標 `youbike-hackathon` @ http://192.168.50.190:5000）
+- **加分梯隊（MISSION §3.5）**：未開始（S1 通知 demo → S2 不確定帶 → S3 天氣 → S4 slides → S5 GIF）
 - **GitHub repo**：✅ `skmygo/youbike`（public，main）
 - **阻塞**：無
 
@@ -24,6 +25,7 @@
 | 本機匯出 | `_out/`（同上 9 檔），重跑 `.venv/bin/python -m pipeline.export_history` |
 | 本機 venv | `.venv`（Python 3.14，dagster 1.13.16 / lightgbm 4.7.0 / mlflow 3.15.1 / duckdb 1.5.5），已含 pipeline+ml extras |
 | 本機跑 dagster | `YOUBIKE_DATA_DIR=$PWD/_out DAGSTER_HOME=$PWD/_out/dagster .venv/bin/dagster job execute -m pipeline.defs -j realtime_refresh` |
+| MLflow | `MLFLOW_TRACKING_URI=http://192.168.50.190:5000`，experiment `youbike-hackathon`（00:20 ping 200） |
 | CF Access app | `youbike-dagster` id `cd42824a-cf26-48c2-9e14-2dfb4d738291`（allow kuan9924501@gmail.com，336h） |
 | station_id | 以**站名**為 key（build_duckdb.py 的流水號）；即時爬蟲用站名對回，新站配號 ≥900000 |
 | 前端驗證 | Claude-in-Chrome 那台（遠端 Windows）**載不動 maplibre worker**（請求恆 pending），不是網站問題。
@@ -53,12 +55,14 @@
   - `/about` 關於：三痛點對三模組 + 資料涵蓋 + 做法
   - signature：**全市空滿脈搏帶**（48 槽，無車向上、無位向下，疊同星期幾的歷史常態虛線）
 
-## 待辦（照 MISSION.md milestone 表）
+## 待辦（照 MISSION.md §3 基準表，00:15 重排）
 
-- [ ] **M4** 特徵庫 + baseline×2 + LightGBM + MLflow + 6 月回測 report.json
-- [ ] **M5** 預測資產 + forecast API + 預測型警示 + 調度建議
-- [ ] **M6** KPI hero + /model 頁 + README + 簡報大綱
-- [ ] **M7** 收尾 SUMMARY.md
+- [ ] **M4**（00:15–02:15）特徵庫 + baseline×2 + LightGBM（30/60/120/180 分，回歸+分類）+ MLflow + 6 月回測 report.json + 模型上 S3
+  - 起手：`ml/` 目前僅 `__init__.py` 從零寫；歷史 parquet 在 `_out/history/`；`MLFLOW_TRACKING_URI=http://192.168.50.190:5000`；訓練丟 run_in_background
+- [ ] **M5**（02:15–03:45）dagster predictions(*/30) + forecast API + 前端預測帶 + 預測型警示 + 調度建議清單 + UI 頁
+- [ ] **M6**（03:45–05:15）KPI hero（回測數字 + KPI1 模擬調度改善）+ /model 頁 + README + 簡報大綱.md
+- [ ] **S**（05:15–07:45）加分梯隊 S1–S5（MISSION §3.5，一次一項）→ 守夜模式（§3.6）
+- [ ] **M7**（07:45–08:00）最終 push + 部署驗證 + SUMMARY.md → stop
 
 ## 資料事實（給後續 milestone 直接引用）
 
@@ -84,3 +88,5 @@
   ③ 站點資料早於地圖 load 抵達 → addSource 拿到空集合
   ④ worker 的相依 maplibre-gl-shared.mjs 沒被打包 → **只有 production 壞，dev 正常**
   另新增 /api/stats/pulse（今日 + 同星期幾歷史常態）
+- 2026-08-07 00:25 — 備戰重整（loop 重啟前，非 loop 輪）：§3 基準表重排（M4 自 00:15 起，超前時間轉加分梯隊 S1–S5 + 守夜模式）；
+  新增 CLAUDE.md 每輪鐵律；健檢全綠：MLflow 200、.venv ml deps OK、/tmp/pw 腳本在、公開網址 health OK、dagster 00:10 新快照
