@@ -330,6 +330,39 @@ export interface ModelReport {
   headline?: BacktestHeadline
 }
 
+export interface KpiScenario {
+  capacity_per_slot: number
+  dispatches_per_day: number
+  prevent_avoided_pct: number
+  prevent_avoided_station_hours: number
+  rule_avoided_pct: number
+  hybrid_avoided_pct: number
+  hybrid_avoided_station_hours: number
+  hybrid_uplift_vs_rule_pct_points: number
+  events_prevented: number
+  events_prevented_pct: number
+  events_prevented_hybrid_pct: number
+  rule_events_prevented_pct: number
+}
+
+export interface ModelKpi {
+  available: boolean
+  kpi?: string
+  test_range?: [string, string]
+  horizon_minutes?: number
+  total_empty_station_slots?: number
+  total_empty_station_hours?: number
+  n_new_events?: number
+  structural?: {
+    top5pct_stations: number
+    top5pct_share_of_empty_time: number
+    stations_empty_over_half_the_time: number
+    insight: string
+  }
+  scenarios?: KpiScenario[]
+  assumptions?: string[]
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`/api${path}`)
   if (!res.ok) throw new Error(`${res.status} ${path}`)
@@ -394,4 +427,5 @@ export const api = {
       tasks: DispatchTask[]
     }>(`/dispatch?horizon=${horizon}&limit=${limit}`),
   modelReport: () => get<ModelReport>("/model/report"),
+  modelKpi: () => get<ModelKpi>("/model/kpi"),
 }

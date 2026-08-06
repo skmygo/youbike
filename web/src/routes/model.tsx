@@ -9,6 +9,7 @@ const GRID = "#1b2537"
 
 export function ModelPage() {
   const q = useQuery({ queryKey: ["model-report"], queryFn: api.modelReport })
+  const kpi = useQuery({ queryKey: ["model-kpi"], queryFn: api.modelKpi })
   const r = q.data
 
   if (q.isLoading) {
@@ -234,6 +235,109 @@ export function ModelPage() {
               上面的數字採<b className="font-normal text-ink-dim">營運門檻</b>（驗證集上 F1 最佳），
               也就是線上警示與調度單實際在用的設定。
             </p>
+          </section>
+        )}
+
+        {/* KPI1：調度改善模擬 */}
+        {kpi.data?.available && kpi.data.scenarios && (
+          <section>
+            <h2 className="eyebrow mb-2">
+              KPI1 · 照建議調度，6 月能少掉多少無車時間（模擬）
+            </h2>
+            <div className="rounded border border-line bg-panel p-3">
+              <p className="text-[12px] leading-relaxed text-ink-dim">
+                6 月全市累計{" "}
+                <span className="num text-ink">
+                  {kpi.data.total_empty_station_hours?.toLocaleString()}
+                </span>{" "}
+                個「站-小時」無車。同一份派工量能，三種派法：
+                <b className="font-normal text-ink">純預防</b>只派給「還沒空但要空了」的站（規則型做不到）；
+                <b className="font-normal text-ink">純補救</b>就是規則型，只看得到已經空掉的站；
+                <b className="font-normal text-ink">一半一半</b>把量能拆開用——這最接近真實調度室的做法，也最有效。
+              </p>
+              <table className="mt-3 w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-line-soft text-left">
+                    <Th>每 30 分可處理</Th>
+                    <Th right>等於每天派工</Th>
+                    <Th right>純預防</Th>
+                    <Th right>純補救（規則型）</Th>
+                    <Th right>一半一半</Th>
+                    <Th right>勝規則型</Th>
+                    <Th right>新事件可預防</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kpi.data.scenarios.map((s) => (
+                    <tr key={s.capacity_per_slot} className="border-b border-line-soft">
+                      <td className="num px-3 py-1.5 text-ink-dim">{s.capacity_per_slot} 站</td>
+                      <td className="num px-3 py-1.5 text-right text-ink-faint">
+                        {s.dispatches_per_day.toLocaleString()} 次
+                      </td>
+                      <td className="num px-3 py-1.5 text-right text-ink-dim">
+                        {s.prevent_avoided_pct.toFixed(1)}%
+                      </td>
+                      <td className="num px-3 py-1.5 text-right text-ink-dim">
+                        {s.rule_avoided_pct.toFixed(1)}%
+                      </td>
+                      <td className="num px-3 py-1.5 text-right text-ink">
+                        {s.hybrid_avoided_pct.toFixed(1)}%
+                        <span className="text-ink-faint">
+                          {" "}
+                          ({s.hybrid_avoided_station_hours.toLocaleString()} 站-小時)
+                        </span>
+                      </td>
+                      <td
+                        className="num px-3 py-1.5 text-right"
+                        style={{
+                          color: s.hybrid_uplift_vs_rule_pct_points > 0 ? "#21d0a5" : "#ff5c5c",
+                        }}
+                      >
+                        {s.hybrid_uplift_vs_rule_pct_points > 0 ? "+" : ""}
+                        {s.hybrid_uplift_vs_rule_pct_points.toFixed(1)} pp
+                      </td>
+                      <td className="num px-3 py-1.5 text-right" style={{ color: "#c084fc" }}>
+                        {s.events_prevented_pct.toFixed(1)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {kpi.data.structural && (
+                <div className="mt-3 rounded border border-line-soft bg-void/40 px-3 py-2">
+                  <p className="text-[12px] leading-relaxed text-ink-dim">
+                    <b className="font-normal text-ink">模擬時發現的一件事</b>：無車時間高度集中——
+                    最常空的{" "}
+                    <span className="num text-ink">{kpi.data.structural.top5pct_stations}</span>{" "}
+                    個站（全體 5%）就佔掉{" "}
+                    <span className="num text-ink">
+                      {(kpi.data.structural.top5pct_share_of_empty_time * 100).toFixed(1)}%
+                    </span>{" "}
+                    的無車時間，其中{" "}
+                    <span className="num text-ink">
+                      {kpi.data.structural.stations_empty_over_half_the_time}
+                    </span>{" "}
+                    個站超過一半時間都沒車。
+                    這類站是<b className="font-normal text-ink">車輛配置與站點規模</b>的問題，
+                    調度只能緩解不能根治；動態調度真正能改變的，是那{" "}
+                    <span className="num text-ink">
+                      {kpi.data.n_new_events?.toLocaleString()}
+                    </span>{" "}
+                    起<b className="font-normal text-ink">新發生</b>的空車事件。
+                  </p>
+                </div>
+              )}
+              {kpi.data.assumptions && (
+                <div className="mt-3 border-t border-line-soft pt-2">
+                  <p className="eyebrow mb-1">這個模擬的假設（請連同結論一起看）</p>
+                  <ul className="list-disc space-y-0.5 pl-4 text-[11px] leading-relaxed text-ink-faint">
+                    {kpi.data.assumptions.map((a) => (
+                      <li key={a}>{a}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </section>
         )}
 

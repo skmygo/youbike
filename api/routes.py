@@ -619,6 +619,18 @@ def dispatch(
     }
 
 
+@router.get("/model/kpi")
+def model_kpi() -> dict:
+    """KPI1：照建議調度可減少多少無車時間（6 月測試集模擬，假設隨附在回傳裡）。"""
+    p = settings.MODEL_DIR / "kpi.json"
+    if not p.exists():
+        return {"available": False}
+    try:
+        return {"available": True, **json.loads(p.read_text(encoding="utf-8"))}
+    except (OSError, ValueError):
+        return {"available": False}
+
+
 @router.get("/model/report")
 def model_report() -> dict:
     """6 月回測報告（M4 產出），/model 頁與首頁 KPI 直接讀這支。"""
