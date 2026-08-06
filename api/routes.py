@@ -15,13 +15,15 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
+from pipeline import alerts as alerts_mod
+
 from . import db, settings
 
 router = APIRouter()
 
-NEAR_THRESHOLD = 2       # 將空／將滿門檻（台）
-WARN_MINUTES = 30        # 警戒：已空滿持續分鐘
-CRIT_MINUTES = 60        # 嚴重：已空滿持續分鐘
+NEAR_THRESHOLD = alerts_mod.NEAR_THRESHOLD   # 將空／將滿門檻（台）
+WARN_MINUTES = alerts_mod.WARN_MINUTES       # 警戒：已空滿持續分鐘
+CRIT_MINUTES = alerts_mod.CRIT_MINUTES       # 嚴重：已空滿持續分鐘
 
 
 # ── parquet 來源組裝 ─────────────────────────────────────────────────────
@@ -51,9 +53,13 @@ def _latest_sql() -> str | None:
     return f"read_parquet('{p}')" if p.exists() else None
 
 
-def _status_expr(bikes: str = "bikes", docks: str = "docks_avail") -> str:
+def _status_expr(bikes: str = "bikes", docks: str = "docks_avail",
+                 total: str = "docks_total") -> str:
+    """站點狀態五分類；有車柱卻既無車也無空位＝離線／維護中，不算空滿。"""
     return f"""
-        CASE WHEN {bikes} = 0 THEN 'empty'
+        CASE WHEN {total} IS NULL OR {total} = 0 THEN 'offline'
+             WHEN {bikes} = 0 AND {docks} = 0 THEN 'offline'
+             WHEN {bikes} = 0 THEN 'empty'
              WHEN {docks} = 0 THEN 'full'
              WHEN {bikes} <= {NEAR_THRESHOLD} THEN 'near_empty'
              WHEN {docks} <= {NEAR_THRESHOLD} THEN 'near_full'
@@ -100,7 +106,7 @@ def stations(
                    s.capacity_docks, s.always_empty,
                    l.ts, l.bikes, l.docks_avail, l.docks_total,
                    round(l.bikes / nullif(l.docks_total, 0), 4) AS occ_rate,
-                   {_status_expr('l.bikes', 'l.docks_avail')} AS status
+                   {_status_expr('l.bikes', 'l.docks_avail', 'l.docks_total')} AS status
             FROM {st} s LEFT JOIN {lat} l USING (station_id)
         """
     else:
@@ -198,7 +204,7 @@ def replay(ts: str = Query(..., description="ISO 時間，例：2026-06-15T08:00
         SELECT s.station_id, st.name, st.district, st.lon, st.lat,
                s.ts, s.bikes, s.docks_avail, s.docks_total,
                round(s.bikes / nullif(s.docks_total, 0), 4) AS occ_rate,
-               {_status_expr('s.bikes', 's.docks_avail')} AS status
+               {_status_expr('s.bikes', 's.docks_avail', 's.docks_total')} AS status
         FROM {src} s JOIN {st} st USING (station_id)
         WHERE s.ts = time_bucket(INTERVAL '30 minutes', TIMESTAMP '{ts}')
           AND NOT coalesce(st.always_empty, false)
@@ -279,8 +285,12 @@ def stats_districts() -> dict:
                sum(l.bikes)::INT                          AS bikes,
                sum(l.docks_avail)::INT                    AS docks_avail,
                round(sum(l.bikes) / nullif(sum(l.docks_total), 0), 4) AS occ_rate,
-               sum(CASE WHEN l.bikes = 0 THEN 1 ELSE 0 END)::INT       AS n_empty,
-               sum(CASE WHEN l.docks_avail = 0 THEN 1 ELSE 0 END)::INT AS n_full,
+               sum(CASE WHEN l.bikes = 0 AND l.docks_avail > 0
+                        THEN 1 ELSE 0 END)::INT                        AS n_empty,
+               sum(CASE WHEN l.docks_avail = 0 AND l.bikes > 0
+                        THEN 1 ELSE 0 END)::INT                        AS n_full,
+               sum(CASE WHEN l.bikes = 0 AND l.docks_avail = 0
+                        THEN 1 ELSE 0 END)::INT                        AS n_offline,
                sum(CASE WHEN l.bikes <= {NEAR_THRESHOLD} AND l.bikes > 0
                         THEN 1 ELSE 0 END)::INT                        AS n_near_empty,
                sum(CASE WHEN l.docks_avail <= {NEAR_THRESHOLD} AND l.docks_avail > 0
@@ -304,9 +314,14 @@ def stats_overview() -> dict:
                    sum(l.bikes)::INT AS bikes,
                    sum(l.docks_total)::INT AS docks_total,
                    round(sum(l.bikes) / nullif(sum(l.docks_total), 0), 4) AS occ_rate,
-                   sum(CASE WHEN l.bikes = 0 THEN 1 ELSE 0 END)::INT       AS n_empty,
-                   sum(CASE WHEN l.docks_avail = 0 THEN 1 ELSE 0 END)::INT AS n_full,
-                   sum(CASE WHEN l.bikes <= {NEAR_THRESHOLD} OR l.docks_avail <= {NEAR_THRESHOLD}
+                   sum(CASE WHEN l.bikes = 0 AND l.docks_avail > 0
+                            THEN 1 ELSE 0 END)::INT                        AS n_empty,
+                   sum(CASE WHEN l.docks_avail = 0 AND l.bikes > 0
+                            THEN 1 ELSE 0 END)::INT                        AS n_full,
+                   sum(CASE WHEN l.bikes = 0 AND l.docks_avail = 0
+                            THEN 1 ELSE 0 END)::INT                        AS n_offline,
+                   sum(CASE WHEN (l.bikes <= {NEAR_THRESHOLD} OR l.docks_avail <= {NEAR_THRESHOLD})
+                            AND NOT (l.bikes = 0 AND l.docks_avail = 0)
                             THEN 1 ELSE 0 END)::INT                        AS n_risk
             FROM {st} s JOIN {lat} l USING (station_id)
             WHERE NOT coalesce(s.always_empty, false)
@@ -381,57 +396,9 @@ def _compute_alerts(level: str | None, district: str | None) -> list[dict]:
     if not src or not st:
         return []
 
-    where = f"AND s.district = '{district}'" if district else ""
-    sql = f"""
-        WITH win AS (
-            SELECT sn.* FROM {src} sn
-            WHERE sn.ts > (SELECT max(ts) FROM {src}) - INTERVAL 6 HOUR
-        ),
-        cur AS (
-            -- docks_total = 0 是無效站（沒有車柱），不進警示
-            SELECT * FROM win WHERE ts = (SELECT max(ts) FROM win) AND docks_total > 0
-        ),
-        -- 目前處於空／滿的站，往回找最後一個「非該狀態」的時間點；
-        -- 找不到代表整個 6 小時觀察窗都在該狀態，記為 360（前端顯示「≥6 小時」）
-        dur AS (
-            SELECT c.station_id,
-                   CASE WHEN c.bikes = 0 THEN 'empty' ELSE 'full' END AS kind,
-                   c.ts AS ts,
-                   c.bikes, c.docks_avail, c.docks_total,
-                   coalesce(
-                     date_diff('minute',
-                       (SELECT max(w.ts) FROM win w
-                        WHERE w.station_id = c.station_id
-                          AND w.ts < c.ts
-                          AND NOT (CASE WHEN c.bikes = 0 THEN w.bikes = 0 ELSE w.docks_avail = 0 END)),
-                       c.ts),
-                     360) AS duration_min
-            FROM cur c
-            WHERE c.bikes = 0 OR c.docks_avail = 0
-        ),
-        near AS (
-            SELECT c.station_id,
-                   CASE WHEN c.bikes <= {NEAR_THRESHOLD} THEN 'near_empty' ELSE 'near_full' END AS kind,
-                   c.ts, c.bikes, c.docks_avail, c.docks_total, 0 AS duration_min
-            FROM cur c
-            WHERE c.bikes > 0 AND c.docks_avail > 0
-              AND (c.bikes <= {NEAR_THRESHOLD} OR c.docks_avail <= {NEAR_THRESHOLD})
-        ),
-        merged AS (SELECT * FROM dur UNION ALL SELECT * FROM near)
-        SELECT m.station_id, s.name, s.district, s.lon, s.lat, s.capacity_docks,
-               m.ts, m.bikes, m.docks_avail, m.docks_total, m.kind, m.duration_min,
-               CASE
-                 WHEN m.kind IN ('empty', 'full') AND m.duration_min >= {CRIT_MINUTES} THEN 'critical'
-                 WHEN m.kind IN ('empty', 'full') AND m.duration_min >= {WARN_MINUTES} THEN 'warning'
-                 WHEN m.kind IN ('empty', 'full') THEN 'warning'
-                 ELSE 'notice'
-               END AS level
-        FROM merged m JOIN {st} s USING (station_id)
-        WHERE NOT coalesce(s.always_empty, false) {where}
-        ORDER BY CASE level WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
-                 m.duration_min DESC, m.station_id
-    """
-    rows = db.query(sql)
+    rows = db.query(alerts_mod.alerts_sql(src, st))
+    if district:
+        rows = [r for r in rows if r["district"] == district]
     if level:
         rows = [r for r in rows if r["level"] == level]
     return rows

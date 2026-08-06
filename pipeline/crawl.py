@@ -10,8 +10,10 @@
 from __future__ import annotations
 
 import json
+import ssl
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -32,12 +34,34 @@ NAME_FIXES = {
 NEW_ID_BASE = 900000
 
 
+def _get(ctx: "ssl.SSLContext | None" = None) -> list[dict]:
+    req = urllib.request.Request(API, headers={"User-Agent": "youbike-hackathon/1.0"})
+    with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
+        return json.load(resp)
+
+
 def fetch(retries: int = 3) -> list[dict]:
+    """抓一個即時快照。
+
+    新北開放平台的憑證鏈缺 Subject Key Identifier，較新的 OpenSSL（例如
+    Python 3.14 自帶的）會驗不過。先走正常驗證，只有在憑證驗證失敗時才降
+    級成不驗證重試一次——這個端點是公開的站點車輛數，沒有機密或身分資料。
+    """
+    insecure_ctx: ssl.SSLContext | None = None
     for i in range(retries):
         try:
-            req = urllib.request.Request(API, headers={"User-Agent": "youbike-hackathon/1.0"})
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                return json.load(resp)
+            return _get(insecure_ctx)
+        except urllib.error.URLError as e:
+            is_cert = isinstance(getattr(e, "reason", None), ssl.SSLCertVerificationError)
+            if is_cert and insecure_ctx is None:
+                print("[crawl] 憑證驗證失敗，改用不驗證連線重試（公開資料端點）",
+                      file=sys.stderr)
+                insecure_ctx = ssl._create_unverified_context()
+                continue
+            if i == retries - 1:
+                raise
+            print(f"[crawl] 抓取失敗（{e}），{15 * (i + 1)} 秒後重試", file=sys.stderr)
+            time.sleep(15 * (i + 1))
         except Exception as e:
             if i == retries - 1:
                 raise
@@ -72,6 +96,12 @@ def normalize(rows: list[dict], ts: datetime) -> pd.DataFrame:
                 "lon": float(r.get("lng") or 0) or None,
                 "lat": float(r.get("lat") or 0) or None,
                 "sno": str(r.get("sno", "")),
+                # 來源額外欄位：act=1 營運中；yb2/eyb 是一般車／電輔車拆分
+                "act": str(r.get("act", "")) == "1",
+                "bikes_yb2": int(r.get("yb2_quantity") or 0),
+                "bikes_eyb": int(r.get("eyb_quantity") or 0),
+                # 該站自己回報的更新時間（各站不同步，僅供參考，不當作時間槽）
+                "mday": str(r.get("mday", "")),
             })
         except (TypeError, ValueError):
             continue
@@ -92,7 +122,8 @@ def normalize(rows: list[dict], ts: datetime) -> pd.DataFrame:
     df["station_id"] = ids
 
     return df[["station_id", "ts", "bikes", "docks_avail", "docks_total",
-               "name", "district", "lon", "lat", "sno", "fetched_at"]]
+               "name", "district", "lon", "lat", "sno", "act",
+               "bikes_yb2", "bikes_eyb", "mday", "fetched_at"]]
 
 
 def run(now: datetime | None = None) -> Path:

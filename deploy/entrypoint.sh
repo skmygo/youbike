@@ -28,7 +28,10 @@ case "${1:-api}" in
     ;;
   dagster)
     bootstrap
-    dagster-daemon run &
+    if [ ! -f "$DAGSTER_HOME/dagster.yaml" ]; then
+      printf 'telemetry:\n  enabled: false\n' > "$DAGSTER_HOME/dagster.yaml"
+    fi
+    dagster-daemon run -m pipeline.defs &
     exec dagster-webserver -h 0.0.0.0 -p 3000 -m pipeline.defs
     ;;
   *)

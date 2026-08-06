@@ -21,6 +21,28 @@ services:
     networks:
       - dokploy-network
 
+  # Dagster：每 10 分鐘爬即時資料 → 服務層 parquet → 警示
+  dagster:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    command: ["dagster"]
+    restart: unless-stopped
+    environment:
+      YOUBIKE_DATA_DIR: /data
+      DAGSTER_HOME: /data/dagster
+      TZ: Asia/Taipei
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://192.168.50.190:3900}
+      S3_BUCKET: ${S3_BUCKET:-youbike}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+    volumes:
+      - youbike-data:/data
+    expose:
+      - "3000"
+    networks:
+      - dokploy-network
+
 volumes:
   youbike-data:
 
