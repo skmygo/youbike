@@ -227,11 +227,45 @@ def alerts_table(context: AssetExecutionContext) -> dg.MaterializeResult:
     })
 
 
+# ── 5. 模型預測 ──────────────────────────────────────────────────────────
+@dg.asset(
+    deps=[serving_snapshots],
+    group_name="ml",
+    description="LightGBM 線上推論：最新一槽 → 30/60/120/180 分的水位與空滿機率（每 30 分鐘）",
+)
+def forecast_table(context: AssetExecutionContext) -> dg.MaterializeResult:
+    # 延後 import：模型或 lightgbm 缺席時，不能拖累其他資產
+    from ml import predict as predict_mod
+
+    if not (settings.MODEL_DIR / "feature_cols.json").exists():
+        return dg.MaterializeResult(metadata={"狀態": "模型尚未就緒（缺 models/），略過"})
+    try:
+        meta = predict_mod.run()
+    except FileNotFoundError as exc:
+        return dg.MaterializeResult(metadata={"狀態": f"資料未就緒：{exc}"})
+
+    return dg.MaterializeResult(metadata={
+        "基準時刻": meta["base_ts"],
+        "站數": meta["n_stations"],
+        "預測列數": meta["rows"],
+        "即時槽佔比": meta["live_slot_ratio"],
+        "60 分內預警（空）": meta["alerts_60min"]["empty"],
+        "60 分內預警（滿）": meta["alerts_60min"]["full"],
+        "耗時（秒）": meta["elapsed_sec"],
+    })
+
+
 # ── Job / Schedule ───────────────────────────────────────────────────────
 realtime_job = dg.define_asset_job(
     "realtime_refresh",
     selection=dg.AssetSelection.groups("realtime", "serving"),
     description="即時爬取 → 服務層 parquet → 警示（每 10 分鐘）",
+)
+
+forecast_job = dg.define_asset_job(
+    "forecast_refresh",
+    selection=dg.AssetSelection.groups("ml"),
+    description="最新快照 → 特徵重算 → LightGBM 推論 → forecast.parquet（每 30 分鐘）",
 )
 
 realtime_schedule = dg.ScheduleDefinition(
@@ -242,8 +276,18 @@ realtime_schedule = dg.ScheduleDefinition(
     default_status=dg.DefaultScheduleStatus.RUNNING,
 )
 
+forecast_schedule = dg.ScheduleDefinition(
+    name="forecast_every_30min",
+    job=forecast_job,
+    # 錯開 realtime（每 10 分整點跑），避免兩條同時吃同一台機器的 CPU
+    cron_schedule="5,35 * * * *",
+    execution_timezone="Asia/Taipei",
+    default_status=dg.DefaultScheduleStatus.RUNNING,
+)
+
 defs = dg.Definitions(
-    assets=[realtime_snapshot, station_registry, serving_snapshots, alerts_table],
-    jobs=[realtime_job],
-    schedules=[realtime_schedule],
+    assets=[realtime_snapshot, station_registry, serving_snapshots, alerts_table,
+            forecast_table],
+    jobs=[realtime_job, forecast_job],
+    schedules=[realtime_schedule, forecast_schedule],
 )

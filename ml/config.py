@@ -31,8 +31,11 @@ EMPTY_BIKES_MAX = 1  # 可借 ≤1 視為「無車」
 FULL_DOCKS_MAX = 1  # 可還 ≤1 視為「滿位」
 ALERT_PROBA_THRESHOLD = 0.70  # 預測型警示門檻（60 分內機率 ≥70%）
 
-# 訓練抽樣（記憶體 14GB，訓練集全量 8.9M 列太吃；固定種子可重現）
-TRAIN_SAMPLE_FRAC = float(os.environ.get("YOUBIKE_TRAIN_FRAC", "0.35"))
+# 訓練抽樣：本機同時是 production 主機，重活罩在 MemoryMax=4G 底下跑。
+# 0.35 於 01:06 OOM → 縮到 0.22（約 190 萬列，對 41 個特徵的 LightGBM 仍充裕）。固定種子可重現。
+TRAIN_SAMPLE_FRAC = float(os.environ.get("YOUBIKE_TRAIN_FRAC", "0.22"))
+# 驗證集只用來 early stopping 與 baseline 對照，抽一半即可（正式回測在 6 月測試集全量做）
+VALID_SAMPLE_FRAC = float(os.environ.get("YOUBIKE_VALID_FRAC", "0.5"))
 RANDOM_SEED = 42
 
 # 站點行為分群

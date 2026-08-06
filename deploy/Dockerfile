@@ -30,7 +30,7 @@ RUN apt-get update \
 
 # 依賴層（pyproject 不變就吃快取）
 COPY pyproject.toml ./
-RUN uv pip install --system --no-cache -r pyproject.toml --extra pipeline
+RUN uv pip install --system --no-cache -r pyproject.toml --extra pipeline --extra infer
 
 COPY api/ ./api/
 COPY pipeline/ ./pipeline/

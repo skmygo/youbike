@@ -23,12 +23,33 @@ export function StationDrawer({ stationId, onClose }: Props) {
     queryFn: () => api.stationHistory(stationId as number, DAYS),
     enabled: stationId != null,
   })
+  const forecast = useQuery({
+    queryKey: ["station-forecast", stationId],
+    queryFn: () => api.forecastStation(stationId as number),
+    enabled: stationId != null,
+    refetchInterval: 120_000,
+  })
 
   if (stationId == null) return null
 
   const d = detail.data
   const st = d?.current?.status ? STATUS[d.current.status] : null
   const points = history.data?.points ?? []
+  const fc = forecast.data?.forecast ?? []
+  // 預測折線：從基準時刻的實際車數出發，往後接 4 個時距的預測值
+  const base = fc[0]?.base_ts
+  const predPoints = base
+    ? [
+        [base, fc[0].now_bikes] as [string, number],
+        ...fc.map(
+          (f) =>
+            [
+              new Date(new Date(base).getTime() + f.horizon * 60_000).toISOString(),
+              f.pred_bikes,
+            ] as [string, number],
+        ),
+      ]
+    : []
 
   return (
     <aside
@@ -118,11 +139,54 @@ export function StationDrawer({ stationId, onClose }: Props) {
                     areaStyle: { color: "rgba(33,208,165,0.10)" },
                     data: points.map((p) => [p.ts, p.bikes]),
                   },
+                  {
+                    type: "line",
+                    name: "模型預測",
+                    showSymbol: true,
+                    symbolSize: 4,
+                    smooth: false,
+                    lineStyle: { width: 1.2, color: "#c084fc", type: "dashed" },
+                    itemStyle: { color: "#c084fc" },
+                    data: predPoints,
+                  },
                 ],
               }}
             />
           )}
         </section>
+
+        {fc.length > 0 && (
+          <section className="mt-5">
+            <p className="eyebrow mb-2">模型預測（LightGBM）</p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {fc.map((f) => {
+                const risk = Math.max(f.proba_empty, f.proba_full)
+                const kind = f.proba_empty >= f.proba_full ? "空" : "滿"
+                const alert = f.alert_empty || f.alert_full
+                return (
+                  <div
+                    key={f.horizon}
+                    className="rounded border bg-void/40 px-2 py-1.5"
+                    style={{ borderColor: alert ? "#ff5c5c55" : "var(--line)" }}
+                  >
+                    <p className="eyebrow">+{f.horizon}分</p>
+                    <p className="num mt-0.5 text-[17px] leading-none text-ink">{f.pred_bikes}</p>
+                    <p
+                      className="num mt-1 text-[10px]"
+                      style={{ color: alert ? "#ff5c5c" : "var(--ink-faint)" }}
+                    >
+                      {kind} {(risk * 100).toFixed(0)}%
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
+              數字是預測的<b className="font-normal text-ink-dim">可借車數</b>，下面一行是該時距
+              「無車／無位」的機率；達 70% 會進預測型警示。
+            </p>
+          </section>
+        )}
 
         {d?.stats && (
           <section className="mt-5">

@@ -25,6 +25,10 @@ ml = [
     "mlflow>=2.17",
     "matplotlib>=3.9",
 ]
+# 線上推論只需要 LightGBM 本身（容器裝這個就好，不必扛 sklearn/mlflow/matplotlib）
+infer = [
+    "lightgbm>=4.5",
+]
 
 [build-system]
 requires = ["hatchling"]

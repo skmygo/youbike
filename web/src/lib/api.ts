@@ -164,6 +164,102 @@ export interface ReplayDay {
   n_slots: number
 }
 
+// ── 預測 / 調度（M5）──────────────────────────────────────────────────────
+export interface ForecastRow {
+  station_id: number
+  name: string
+  district: string
+  base_ts: string
+  horizon: number
+  now_bikes: number
+  now_docks_avail: number
+  docks_total: number
+  pred_ratio: number
+  pred_bikes: number
+  pred_docks: number
+  proba_empty: number
+  proba_full: number
+  alert_empty: boolean
+  alert_full: boolean
+  is_live: boolean
+  risk?: number
+}
+
+export interface ForecastMeta {
+  base_ts?: string
+  generated_at?: string
+  n_stations?: number
+  n_live_stations?: number
+  live_slot_ratio?: number
+  bridged_slot_ratio?: number
+  alert_threshold?: number
+  alerts_60min?: { empty: number; full: number }
+  note?: string
+}
+
+export interface ForecastAlert {
+  station_id: number
+  name: string
+  district: string
+  base_ts: string
+  horizon: number
+  now_bikes: number
+  now_docks_avail: number
+  docks_total: number
+  pred_bikes: number
+  pred_docks: number
+  proba_empty: number
+  proba_full: number
+  kind: "empty" | "full"
+  proba: number
+}
+
+export interface DispatchTask {
+  to_station: number
+  to_name: string
+  district: string
+  now_bikes: number
+  to_pred_bikes: number
+  to_capacity: number
+  proba_empty: number
+  need_bikes: number
+  from_station: number | null
+  from_name: string | null
+  spare_bikes: number | null
+  proba_full: number | null
+  distance_km: number | null
+  move_bikes: number
+  // 降級（規則型）模式下改回這幾欄
+  level?: string
+  duration_min?: number
+}
+
+export interface BacktestHeadline {
+  mae_bikes_60min: number
+  mae_bikes_60min_persistence: number
+  improve_vs_persistence_pct_60min: number
+  empty_event_coverage: number
+  empty_event_mean_lead_minutes: number
+  empty_f1_60min: number
+  full_event_coverage: number
+  full_event_mean_lead_minutes: number
+  n_empty_events_june: number
+  n_full_events_june: number
+}
+
+export interface ModelReport {
+  available: boolean
+  generated_at?: string
+  data?: Record<string, unknown>
+  model?: Record<string, unknown>
+  regression?: Record<string, Record<string, { mae_bikes: number; mae_ratio: number; improve_vs_persistence_pct?: number }>>
+  classification?: Record<string, Record<string, Record<string, unknown>>>
+  events?: Record<string, Record<string, number>>
+  valid_baselines?: Record<string, unknown>
+  feature_importance?: Record<string, Array<{ feature: string; gain: number }>>
+  headline?: BacktestHeadline
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`/api${path}`)
   if (!res.ok) throw new Error(`${res.status} ${path}`)
@@ -198,4 +294,34 @@ export const api = {
     ),
   replay: (ts: string) => get<StationsResponse & { ts: string }>(`/replay?ts=${encodeURIComponent(ts)}`),
   replayDays: () => get<{ days: ReplayDay[] }>("/replay/days"),
+
+  forecast: (horizon = 60, opts: { district?: string; riskOnly?: boolean; limit?: number } = {}) => {
+    const q = new URLSearchParams({ horizon: String(horizon) })
+    if (opts.district) q.set("district", opts.district)
+    if (opts.riskOnly) q.set("risk_only", "true")
+    if (opts.limit) q.set("limit", String(opts.limit))
+    return get<{ count: number; horizon: number; meta: ForecastMeta; forecast: ForecastRow[]; status?: string }>(
+      `/forecast?${q}`,
+    )
+  },
+  forecastMeta: () =>
+    get<{ available: boolean; meta: ForecastMeta; backtest_headline: Partial<BacktestHeadline> }>(
+      "/forecast/meta",
+    ),
+  forecastStation: (id: number) =>
+    get<{ station_id: number; meta: ForecastMeta; forecast: ForecastRow[] }>(`/forecast/station/${id}`),
+  forecastAlerts: (horizon = 60, district?: string) =>
+    get<{ count: number; horizon: number; meta: ForecastMeta; alerts: ForecastAlert[] }>(
+      `/forecast/alerts?horizon=${horizon}${district ? `&district=${encodeURIComponent(district)}` : ""}`,
+    ),
+  dispatch: (horizon = 60, limit = 50) =>
+    get<{
+      count: number
+      mode: "forecast" | "rule" | "unavailable"
+      horizon: number | null
+      total_move_bikes?: number
+      meta: ForecastMeta
+      tasks: DispatchTask[]
+    }>(`/dispatch?horizon=${horizon}&limit=${limit}`),
+  modelReport: () => get<ModelReport>("/model/report"),
 }

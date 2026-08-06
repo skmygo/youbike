@@ -4,13 +4,16 @@
 
 ## 狀態塊
 
-- **當前 milestone**：M4 進行中（ml/config・features・train・evaluate 四檔已寫）— 二次基準 00:55–02:45；
-  ⚠️ 00:45 首跑沒設資源上限把機器吃掛（swap 3.9/4G 灌滿、同機 Dokploy 重啟）→ 已訂 CLAUDE.md 資源鐵律 7–9，
-  程式碼配額已調安全（train num_threads 8→3、features DuckDB 6GB/6t→3GB/3t），重跑必戴 systemd-run 資源罩
+- **當前 milestone**：M4 收尾中（特徵庫 ✅、12 模型訓練中）+ M5 程式碼已寫完（待模型就位後驗證）；
+  資源罩全程有效，峰值 1.88G/4G，production 容器全程健在
+- **M4 訓練結果（驗證集 5 月，LightGBM vs persistence MAE 台車）**：
+  h30 1.630/1.671 **+2.4%** ｜ h60 2.286/2.492 **+8.3%** ｜ h120 2.991/3.582 **+16.5%** ｜ h180 3.383/4.394 **+23.0%**
+  （lastweek baseline 5.44 全面墊底；時距越長模型優勢越大＝合理且好講的故事）
 - **公開網址**：`https://youbike.itsmygo.uk` — ✅ 五頁全上線（即時指揮／回放／警示／區域分析／關於）；
   00:15 health/meta 正常，dagster 最新快照 00:10 落地
 - **Dagster**：✅ `https://youbike-dagster.itsmygo.uk`（CF Access 336h），schedule `realtime_every_10min` RUNNING
-- **MLflow experiment**：❌ 尚未建立（服務 00:20 ping 200；目標 `youbike-hackathon` @ http://192.168.50.190:5000）
+- **MLflow experiment**：✅ `youbike-hackathon` = experiment id **3** @ http://192.168.50.190:5000
+  （baselines-valid + lgbm-reg-h{30,60,120,180} + lgbm-clf-* 逐一進 run，模型檔當 artifact）
 - **加分梯隊（MISSION §3.5）**：未開始（S1 通知 demo → S2 不確定帶 → S3 天氣 → S4 slides → S5 GIF）
 - **GitHub repo**：✅ `skmygo/youbike`（public，main）
 - **阻塞**：無
@@ -63,7 +66,14 @@
 - [ ] **M4**（00:55–02:45）特徵庫 + baseline×2 + LightGBM（30/60/120/180 分，回歸+分類）+ MLflow + 6 月回測 report.json + 模型上 S3
   - 續作：ml/ 四檔已寫好、配額已調安全；跑 features → train → evaluate 全程資源罩 + run_in_background；
     開跑前 `free -g` 確認 available ≥6G；歷史 parquet 在 `_out/history/`；`MLFLOW_TRACKING_URI=http://192.168.50.190:5000`
-- [ ] **M5**（02:45–04:15）dagster predictions(*/30) + forecast API + 前端預測帶 + 預測型警示 + 調度建議清單 + UI 頁
+- [ ] **M5**（提前做完程式碼，待模型就位後端到端驗證）
+  - ✅ `ml/predict.py` 線上推論（特徵與訓練逐欄對齊；**歷史橋接**補 lag：即時快照只累積數槽，
+    缺的槽用「同站同 dow 同 slot 的上一次實際觀測」暖機，`live_slot_ratio` 誠實揭露比例）
+  - ✅ dagster `forecast_table` 資產 + job `forecast_refresh` + schedule `forecast_every_30min`（5,35 分，錯開爬蟲）
+  - ✅ API `/forecast` `/forecast/meta` `/forecast/station/{id}` `/forecast/alerts` `/dispatch`（含無模型時的規則型降級）`/model/report`
+  - ✅ 前端：`/dispatch` 調度建議頁（新）、站點抽屜預測帶（虛線接在 7 天曲線尾端）+ 四時距卡片、首頁「未來一小時」KPI
+  - ✅ Dockerfile 加 `--extra infer`（只裝 lightgbm）、`ml/upload_models.py`（模型+4 張輔助表 → S3 `models/`）
+  - [ ] 待做：跑 upload_models → 部署 → 公開網址驗證 forecast 端到端
 - [ ] **M6**（04:15–05:45）KPI hero（回測數字 + KPI1 模擬調度改善）+ /model 頁 + README + 簡報大綱.md
 - [ ] **S**（05:45–07:45）加分梯隊 S1–S5（MISSION §3.5，一次一項）→ 守夜模式（§3.6）
 - [ ] **M7**（07:45–08:00）最終 push + 部署驗證 + SUMMARY.md → stop
@@ -94,6 +104,11 @@
   另新增 /api/stats/pulse（今日 + 同星期幾歷史常態）
 - 2026-08-07 00:25 — 備戰重整（loop 重啟前，非 loop 輪）：§3 基準表重排（M4 自 00:15 起，超前時間轉加分梯隊 S1–S5 + 守夜模式）；
   新增 CLAUDE.md 每輪鐵律；健檢全綠：MLflow 200、.venv ml deps OK、/tmp/pw 腳本在、公開網址 health OK、dagster 00:10 新快照
+- 2026-08-07 01:25 — M4 特徵庫 85 秒完成（train 859 萬 / valid 224 萬 / test 216 萬列）；訓練踩兩坑後穩定跑：
+  ① DuckDB `.df()` 6.7 秒衝到 4G 被 OOM 殺 → SQL 端 CAST 成 4 bytes + Arrow `self_destruct` + 抽樣 0.35→0.22 + valid 抽 0.5，
+    峰值降到 **1.88G**（先寫 memcheck smoke test 驗過才開跑，沒有再賭一次）
+  ② `_out/models/` 是先前 docker 掛載留下的 **root 擁有**目錄 → LightGBM 存檔被拒（exit 0 但沒模型），rmdir 重建即解
+  同一輪把 M5 全部程式碼寫完（見上）；前端 `tsc --noEmit` 通過
 - 2026-08-07 00:58 — ⚠️ 資源事故復盤（非 loop 輪）：M4 首跑無上限把 8 核/14GB 吃滿，swap 灌滿 3.9/4G，**同機的 production
   （Dokploy/Traefik/全部 *.itsmygo.uk）跟著遭殃，Dokploy 重啟過一次**。對策：CLAUDE.md 新增資源鐵律 7–9（systemd-run 罩
   4G/400%/nice19、num_threads=3、DuckDB 3GB/3t、跑前 free -g）；train.py / features.py 配額已改；§3 二次基準（M4 至 02:45）

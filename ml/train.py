@@ -7,10 +7,12 @@
 
 from __future__ import annotations
 
+import gc
 import json
 import time
 from pathlib import Path
 
+import duckdb
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
@@ -28,6 +30,7 @@ from ml.config import (
     MODEL_DIR,
     RANDOM_SEED,
     TRAIN_SAMPLE_FRAC,
+    VALID_SAMPLE_FRAC,
 )
 
 REG_PARAMS = dict(
@@ -69,20 +72,32 @@ def _log(msg: str) -> None:
 
 
 def load_split(name: str, frac: float = 1.0) -> pd.DataFrame:
+    """用 DuckDB 讀取、來源端抽樣並直接降型別。
+
+    這裡的每一步都是為了守住 4G 資源罩（01:06 一次 OOM 的教訓）：
+    pandas 先載全量會爆、DuckDB 預設回 float64 也會爆，所以在 SQL 就 CAST 成 4 bytes，
+    再用 Arrow self_destruct 交棒給 pandas（避免 Arrow / pandas 兩份同時在記憶體）。
+    """
     path = ML_DIR / f"features_{name}.parquet"
-    cols = list(dict.fromkeys(FEATURE_COLS + ["station_id", "ts"]))
-    for h in HORIZONS:
-        cols += [f"y_ratio_{h}", f"y_bikes_{h}", f"y_docks_{h}", f"bl_lastweek_{h}"]
-    df = pd.read_parquet(path, columns=cols)
+    targets = [f"{p}{h}" for h in HORIZONS for p in ("y_ratio_", "y_bikes_", "y_docks_", "bl_lastweek_")]
+    sel = [
+        f"CAST({c} AS SMALLINT) AS {c}" if c in CATEGORICAL_COLS else f"CAST({c} AS FLOAT) AS {c}"
+        for c in FEATURE_COLS
+    ] + [f"CAST({c} AS FLOAT) AS {c}" for c in targets]
+    con = duckdb.connect()
+    con.execute("SET memory_limit='1500MB'")
+    con.execute("SET threads=3")
+    con.execute("SET preserve_insertion_order=false")
+    q = f"SELECT {', '.join(sel)} FROM read_parquet('{path}')"
     if frac < 1.0:
-        rng = np.random.default_rng(RANDOM_SEED)
-        keep = rng.random(len(df)) < frac
-        df = df[keep]
-    for c in FEATURE_COLS:
-        if c in CATEGORICAL_COLS:
-            df[c] = df[c].astype("int16").astype("category")
-        else:
-            df[c] = df[c].astype("float32")
+        q += f" USING SAMPLE {frac * 100:.6g}% (bernoulli, {RANDOM_SEED})"
+    tbl = con.execute(q).fetch_arrow_table()
+    con.close()
+    df = tbl.to_pandas(self_destruct=True, split_blocks=True)
+    del tbl
+    gc.collect()
+    for c in CATEGORICAL_COLS:
+        df[c] = df[c].astype("category")
     _log(f"{name}: {len(df):,} 列, {df.memory_usage(deep=True).sum() / 1e9:.2f} GB")
     return df
 
@@ -190,8 +205,8 @@ def train_all(train: pd.DataFrame, valid: pd.DataFrame) -> dict:
         t0 = time.time()
         ytr = train[f"y_ratio_{h}"].to_numpy(dtype="float32")
         yva = valid[f"y_ratio_{h}"].to_numpy(dtype="float32")
-        dtr = lgb.Dataset(Xtr, ytr, categorical_feature=CATEGORICAL_COLS, free_raw_data=False)
-        dva = lgb.Dataset(Xva, yva, reference=dtr, categorical_feature=CATEGORICAL_COLS, free_raw_data=False)
+        dtr = lgb.Dataset(Xtr, ytr, categorical_feature=CATEGORICAL_COLS)
+        dva = lgb.Dataset(Xva, yva, reference=dtr, categorical_feature=CATEGORICAL_COLS)
         with mlflow.start_run(run_name=f"lgbm-reg-h{h}"):
             mlflow.set_tags({"stage": "train", "task": "regression", "horizon": str(h), "milestone": "M4"})
             mlflow.log_params({**REG_PARAMS, "n_rounds": N_ROUNDS, "early_stop": EARLY_STOP,
@@ -222,7 +237,8 @@ def train_all(train: pd.DataFrame, valid: pd.DataFrame) -> dict:
         _log(f"  reg h={h}: MAE(bikes)={m['mae_bikes']:.3f} "
              f"(persistence {base_mae:.3f}, {m['improve_vs_persistence_pct']:+.1f}%) "
              f"iter={m['best_iteration']} {time.time()-t0:.0f}s")
-        del dtr, dva
+        del dtr, dva, booster
+        gc.collect()
 
     # ---- 分類：空 / 滿事件 ----
     for ev, col, thr in (("empty", "y_bikes_{}", EMPTY_BIKES_MAX), ("full", "y_docks_{}", FULL_DOCKS_MAX)):
@@ -231,8 +247,8 @@ def train_all(train: pd.DataFrame, valid: pd.DataFrame) -> dict:
             ytr = (train[col.format(h)].to_numpy() <= thr).astype("int8")
             yva = (valid[col.format(h)].to_numpy() <= thr).astype("int8")
             pos = float(ytr.mean())
-            dtr = lgb.Dataset(Xtr, ytr, categorical_feature=CATEGORICAL_COLS, free_raw_data=False)
-            dva = lgb.Dataset(Xva, yva, reference=dtr, categorical_feature=CATEGORICAL_COLS, free_raw_data=False)
+            dtr = lgb.Dataset(Xtr, ytr, categorical_feature=CATEGORICAL_COLS)
+            dva = lgb.Dataset(Xva, yva, reference=dtr, categorical_feature=CATEGORICAL_COLS)
             with mlflow.start_run(run_name=f"lgbm-clf-{ev}-h{h}"):
                 mlflow.set_tags({"stage": "train", "task": f"clf_{ev}", "horizon": str(h), "milestone": "M4"})
                 mlflow.log_params({**{k: v for k, v in CLF_PARAMS.items() if k != "metric"},
@@ -267,7 +283,8 @@ def train_all(train: pd.DataFrame, valid: pd.DataFrame) -> dict:
                 summary["models"][f"clf_{ev}_h{h}"] = m
             _log(f"  clf {ev} h={h}: PR-AUC={m['pr_auc']:.3f} bestF1={m['best_f1']:.3f}@{t_best:.2f} "
                  f"alertF1={m['alert_f1']:.3f} iter={m['best_iteration']} {time.time()-t0:.0f}s")
-            del dtr, dva
+            del dtr, dva, booster, proba
+            gc.collect()
 
     (ML_DIR / "train_summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -288,7 +305,7 @@ def train_all(train: pd.DataFrame, valid: pd.DataFrame) -> dict:
 def main() -> None:
     t0 = time.time()
     train = load_split("train", TRAIN_SAMPLE_FRAC)
-    valid = load_split("valid")
+    valid = load_split("valid", VALID_SAMPLE_FRAC)
     train_all(train, valid)
     _log(f"訓練完成，總耗時 {time.time() - t0:.0f}s")
 

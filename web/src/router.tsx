@@ -4,6 +4,7 @@ import { RootLayout } from "@/routes/root"
 import { IndexPage } from "@/routes/index"
 import { ReplayPage } from "@/routes/replay"
 import { AlertsPage } from "@/routes/alerts"
+import { DispatchPage } from "@/routes/dispatch"
 import { DistrictsPage } from "@/routes/districts"
 import { AboutPage } from "@/routes/about"
 
@@ -29,6 +30,12 @@ const alertsRoute = createRoute({
   component: AlertsPage,
 })
 
+const dispatchRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/dispatch",
+  component: DispatchPage,
+})
+
 const districtsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/districts",
@@ -45,6 +52,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   replayRoute,
   alertsRoute,
+  dispatchRoute,
   districtsRoute,
   aboutRoute,
 ])

@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import json
 from datetime import date as date_module
 from pathlib import Path
 
@@ -417,6 +418,207 @@ def stats_worst(limit: int = Query(20, ge=1, le=200), metric: str = "empty") -> 
         LIMIT {limit}
     """)
     return {"metric": metric, "count": len(rows), "rows": rows}
+
+
+# ── 預測（M5）────────────────────────────────────────────────────────────
+def _forecast_sql() -> str | None:
+    p = settings.FORECAST_PARQUET
+    return f"read_parquet('{p}')" if p.exists() else None
+
+
+def _forecast_meta() -> dict:
+    """predict.py 每次寫的隨附後設資料（基準時刻、即時槽佔比…）。"""
+    p = settings.SERVING_DIR / "forecast_meta.json"
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _q(s: str) -> str:
+    return s.replace("'", "''")
+
+
+@router.get("/forecast")
+def forecast(
+    horizon: int = Query(60, description="預測時距（分）：30 / 60 / 120 / 180"),
+    district: str | None = None,
+    risk_only: bool = Query(False, description="只回 60 分內空/滿機率達門檻的站"),
+    limit: int = Query(300, ge=1, le=2000),
+) -> dict:
+    """模型預測清單（Dagster 每 30 分鐘物化，API 只讀檔，絕不在請求路徑跑模型）。"""
+    src = _forecast_sql()
+    if not src:
+        return {"count": 0, "horizon": horizon, "forecast": [], "meta": {},
+                "status": "尚未產生預測（模型或排程未就緒）"}
+
+    where = [f"horizon = {int(horizon)}"]
+    if district:
+        where.append(f"district = '{_q(district)}'")
+    if risk_only:
+        where.append("(alert_empty OR alert_full)")
+    sql = (
+        f"SELECT station_id, name, district, base_ts, horizon, now_bikes, now_docks_avail,"
+        f" docks_total, pred_ratio, pred_bikes, pred_docks, proba_empty, proba_full,"
+        f" alert_empty, alert_full, is_live,"
+        f" greatest(proba_empty, proba_full) AS risk"
+        f" FROM {src} WHERE {' AND '.join(where)}"
+        f" ORDER BY risk DESC, station_id LIMIT {int(limit)}"
+    )
+    rows = db.query(sql)
+    return {"count": len(rows), "horizon": horizon, "meta": _forecast_meta(), "forecast": rows}
+
+
+@router.get("/forecast/meta")
+def forecast_meta() -> dict:
+    """預測的基準時刻與資料覆蓋度；前端用來顯示「預測基準 xx:xx」與暖機狀態。"""
+    meta = _forecast_meta()
+    report = {}
+    if settings.REPORT_JSON.exists():
+        try:
+            report = json.loads(settings.REPORT_JSON.read_text(encoding="utf-8")).get("headline", {})
+        except (OSError, ValueError):
+            report = {}
+    return {"available": bool(_forecast_sql()), "meta": meta, "backtest_headline": report}
+
+
+@router.get("/forecast/station/{station_id}")
+def forecast_station(station_id: int) -> dict:
+    """單站四個時距的預測曲線（站點抽屜用）。"""
+    src = _forecast_sql()
+    if not src:
+        return {"station_id": station_id, "forecast": [], "meta": {}}
+    rows = db.query(
+        f"SELECT horizon, base_ts, now_bikes, now_docks_avail, docks_total,"
+        f" pred_ratio, pred_bikes, pred_docks, proba_empty, proba_full,"
+        f" alert_empty, alert_full"
+        f" FROM {src} WHERE station_id = {int(station_id)} ORDER BY horizon"
+    )
+    return {"station_id": station_id, "meta": _forecast_meta(), "forecast": rows}
+
+
+@router.get("/forecast/alerts")
+def forecast_alerts(
+    horizon: int = Query(60),
+    district: str | None = None,
+    limit: int = Query(200, ge=1, le=1000),
+) -> dict:
+    """預測型警示（WP4 第四級）：模型判定 horizon 分鐘內空/滿機率達門檻的站。
+
+    與 /api/alerts 的差別是「規則型看的是已經發生的事，這裡看的是還沒發生的事」。
+    """
+    src = _forecast_sql()
+    if not src:
+        return {"count": 0, "horizon": horizon, "alerts": [], "meta": {}}
+    where = [f"horizon = {int(horizon)}", "(alert_empty OR alert_full)"]
+    if district:
+        where.append(f"district = '{_q(district)}'")
+    rows = db.query(
+        f"SELECT station_id, name, district, base_ts, horizon, now_bikes, now_docks_avail,"
+        f" docks_total, pred_bikes, pred_docks, proba_empty, proba_full,"
+        f" CASE WHEN proba_empty >= proba_full THEN 'empty' ELSE 'full' END AS kind,"
+        f" greatest(proba_empty, proba_full) AS proba"
+        f" FROM {src} WHERE {' AND '.join(where)}"
+        f" ORDER BY proba DESC LIMIT {int(limit)}"
+    )
+    return {"count": len(rows), "horizon": horizon, "meta": _forecast_meta(), "alerts": rows}
+
+
+@router.get("/dispatch")
+def dispatch(
+    horizon: int = Query(60, description="以哪個時距的預測擬定調度"),
+    district: str | None = None,
+    limit: int = Query(50, ge=1, le=300),
+) -> dict:
+    """調度建議清單（WP5）。
+
+    有模型預測時：把 horizon 分鐘後可能缺車的站列為「要補」、可能滿位的站列為「要收」，
+    再幫每個要補的站配一個最近的要收站，湊成一趟「從 A 收 N 台 → 補到 B」。
+    模型還沒就緒時降級成現況版：直接用規則型警示中已經空掉的站。
+
+    補到 35% 水位、收到 65% 水位是安全帶的兩端，取這兩個目標可以讓一趟車同時解掉兩個問題。
+    """
+    st = _stations_sql()
+    src = _forecast_sql()
+    dis = f" AND district = '{_q(district)}'" if district else ""
+
+    if not src or not st:
+        # 降級：沒有預測就用規則型警示（已經空掉的站）擬現況調度
+        if not settings.ALERTS_PARQUET.exists():
+            return {"count": 0, "mode": "unavailable", "tasks": [], "meta": {}}
+        rows = db.query(
+            f"SELECT station_id, name, district, bikes AS now_bikes, docks_total,"
+            f" greatest(3, ceil(docks_total * 0.35) - bikes)::INT AS need_bikes,"
+            f" level, duration_min"
+            f" FROM read_parquet('{settings.ALERTS_PARQUET}')"
+            f" WHERE level IN ('critical','warning') AND bikes <= 1{dis}"
+            f" ORDER BY duration_min DESC LIMIT {int(limit)}"
+        )
+        return {"count": len(rows), "mode": "rule", "horizon": None, "tasks": rows,
+                "meta": {"note": "模型預測尚未就緒，改以規則型警示產生現況調度建議"}}
+
+    sql = f"""
+        WITH f AS (
+            SELECT * FROM {src} WHERE horizon = {int(horizon)}
+        ), st AS (
+            SELECT station_id, lon, lat FROM {st}
+        ), need AS (
+            SELECT f.station_id, f.name, f.district, f.docks_total, f.now_bikes,
+                   f.pred_bikes, f.proba_empty, s.lon, s.lat,
+                   greatest(3, ceil(f.docks_total * 0.35) - f.pred_bikes)::INT AS need_bikes
+            FROM f JOIN st s USING (station_id)
+            WHERE f.alert_empty{dis}
+        ), surplus AS (
+            SELECT f.station_id, f.name, f.district, f.docks_total,
+                   f.pred_bikes, f.proba_full, s.lon, s.lat,
+                   greatest(3, f.pred_bikes - floor(f.docks_total * 0.65))::INT AS spare_bikes
+            FROM f JOIN st s USING (station_id)
+            WHERE f.alert_full
+        ), paired AS (
+            SELECT n.station_id AS to_station, n.name AS to_name, n.district,
+                   n.now_bikes, n.pred_bikes AS to_pred_bikes, n.docks_total AS to_capacity,
+                   n.proba_empty, n.need_bikes,
+                   p.station_id AS from_station, p.name AS from_name,
+                   p.spare_bikes, p.proba_full,
+                   111.0 * sqrt(pow(n.lat - p.lat, 2)
+                        + pow((n.lon - p.lon) * cos(radians(n.lat)), 2)) AS distance_km
+            FROM need n LEFT JOIN surplus p ON p.station_id <> n.station_id
+            QUALIFY row_number() OVER (
+                PARTITION BY n.station_id ORDER BY distance_km NULLS LAST) = 1
+        )
+        SELECT to_station, to_name, district, now_bikes, to_pred_bikes, to_capacity,
+               round(proba_empty, 3) AS proba_empty, need_bikes,
+               from_station, from_name, spare_bikes,
+               round(proba_full, 3) AS proba_full,
+               round(distance_km, 2) AS distance_km,
+               least(need_bikes, coalesce(spare_bikes, need_bikes))::INT AS move_bikes
+        FROM paired
+        ORDER BY proba_empty DESC, need_bikes DESC
+        LIMIT {int(limit)}
+    """
+    rows = db.query(sql)
+    total_move = sum(r.get("move_bikes") or 0 for r in rows)
+    return {
+        "count": len(rows), "mode": "forecast", "horizon": horizon,
+        "total_move_bikes": total_move,
+        "meta": {**_forecast_meta(),
+                 "note": "每個缺車站配最近的一個滿位站；同一來源站可能出現在多筆任務中"},
+        "tasks": rows,
+    }
+
+
+@router.get("/model/report")
+def model_report() -> dict:
+    """6 月回測報告（M4 產出），/model 頁與首頁 KPI 直接讀這支。"""
+    if not settings.REPORT_JSON.exists():
+        return {"available": False}
+    try:
+        report = json.loads(settings.REPORT_JSON.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"available": False}
+    return {"available": True, **report}
 
 
 # ── 警示 ─────────────────────────────────────────────────────────────────

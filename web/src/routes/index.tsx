@@ -29,6 +29,11 @@ export function IndexPage() {
     refetchInterval: REFRESH,
   })
   const pulse = useQuery({ queryKey: ["pulse"], queryFn: () => api.pulse() })
+  const fcMeta = useQuery({
+    queryKey: ["forecast-meta"],
+    queryFn: api.forecastMeta,
+    refetchInterval: REFRESH,
+  })
 
   const now = overview.data?.now
   const asOf = stations.data?.as_of ? new Date(stations.data.as_of) : null
@@ -54,6 +59,38 @@ export function IndexPage() {
             {now?.occ_rate != null && ` · 滿載率 ${(now.occ_rate * 100).toFixed(1)}%`}
           </p>
         </section>
+
+        {fcMeta.data?.available && (
+          <section className="shrink-0 border-b border-line px-3 py-3">
+            <p className="eyebrow mb-2">未來一小時 · 模型預測</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Kpi
+                label="可能無車"
+                value={fcMeta.data.meta.alerts_60min?.empty}
+                color="#c084fc"
+                hint="模型判定 60 分鐘內無車可借的機率達 70%"
+              />
+              <Kpi
+                label="可能滿位"
+                value={fcMeta.data.meta.alerts_60min?.full}
+                color="#c084fc"
+                hint="模型判定 60 分鐘內無位可還的機率達 70%"
+              />
+            </div>
+            {fcMeta.data.backtest_headline?.mae_bikes_60min != null && (
+              <p className="num mt-2 text-[11px] leading-relaxed text-ink-faint">
+                6 月回測：60 分預測平均差{" "}
+                <span className="text-ink-dim">
+                  {fcMeta.data.backtest_headline.mae_bikes_60min.toFixed(2)}
+                </span>{" "}
+                台，比現況延續好{" "}
+                <span className="text-ink-dim">
+                  {fcMeta.data.backtest_headline.improve_vs_persistence_pct_60min?.toFixed(1)}%
+                </span>
+              </p>
+            )}
+          </section>
+        )}
 
         <section className="flex min-h-0 flex-1 flex-col pt-3">
           <p className="eyebrow mb-2 px-3">待處理站點</p>

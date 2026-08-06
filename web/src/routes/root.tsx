@@ -8,6 +8,7 @@ const NAV = [
   { to: "/", label: "即時指揮" },
   { to: "/replay", label: "歷史回放" },
   { to: "/alerts", label: "警示" },
+  { to: "/dispatch", label: "調度建議" },
   { to: "/districts", label: "區域分析" },
   { to: "/about", label: "關於" },
 ]
