@@ -5,7 +5,8 @@
 ## 部署與驗收（歷史上最常出事的地方）
 
 1. **push 不會自動部署**。`git push` 後必用 dokploy-mcp `compose-deploy`（composeId 見 PROGRESS.md）→ 等 build 綠 → curl 公開網址 `https://youbike.itsmygo.uk` 驗收（不是 localhost）。
-2. **前端改動先本機容器驗過再 push**（dev 正常 ≠ production 正常；maplibre worker 只在 production 壞過）：`docker build` → `docker run --rm -d --name yb-prod -p 18010:8000 -v $PWD/_out:/data <image>` → `node /tmp/pw/shot.mjs <url> <out.png>` 看截圖+console。遠端 Chrome 載不動 maplibre worker，不要用它驗地圖。
+2. **前端改動先本機容器驗過再 push**（dev 正常 ≠ production 正常；maplibre worker 只在 production 壞過）：`docker build` → `docker run --rm -d --name yb-prod -p 18010:8000 -v $PWD/_out:/data <image>` → `node /tmp/pw/shot.mjs <url> <out.png>` 看截圖+console。
+   **絕不開 Chrome**（禁用 claude-in-chrome / mcp__claude-in-chrome__* 全部工具；遠端 Chrome 也載不動 maplibre worker）——需要瀏覽器互動、截圖、console 驗證時一律用 `playwright-cli` 這個 skill（headless）。
 3. DuckDB 併發鐵律:api / dagster 絕不共用 .duckdb 檔；交換一律 parquet（寫端原子 rename），API 每請求 in-memory 連線。
 
 ## ML（M4/M5）
