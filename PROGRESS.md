@@ -20,7 +20,8 @@
 - **Dagster**：✅ `https://youbike-dagster.itsmygo.uk`（CF Access 336h），schedule `realtime_every_10min` RUNNING
 - **MLflow experiment**：✅ `youbike-hackathon` = experiment id **3** @ http://192.168.50.190:5000
   （baselines-valid + lgbm-reg-h{30,60,120,180} + lgbm-clf-* 逐一進 run，模型檔當 artifact）
-- **加分梯隊（MISSION §3.5）**：未開始（S1 通知 demo → S2 不確定帶 → S3 天氣 → S4 slides → S5 GIF）
+- **加分梯隊（MISSION §3.5）**：**S1 ✅ 完成**（主動通知管道，02:36 部署中）
+  → 下一項 S2 預測不確定帶（45 分）→ S3 天氣（60 分）→ S4 slides（45 分）→ S5 GIF（30 分）
 - **GitHub repo**：✅ `skmygo/youbike`（public，main）
 - **阻塞**：無
 
@@ -95,7 +96,10 @@
     模型只贏 1–3pp；拆成兩個佇列後結論才成立
   - **最有價值的發現**：無車時間高度集中——最常空的 76 站（5%）佔 20.5% 無車時間、
     13 站超過一半時間沒車 ⇒ 那是車輛配置/站點規模問題，調度只能緩解不能根治
-- [ ] **S**（05:45–07:45）加分梯隊 S1–S5（MISSION §3.5，一次一項）→ 守夜模式（§3.6）
+- [~] **加分梯隊**（提前開工）
+  - [x] **S1 主動通知管道**：dagster `alert_notifications`（只推新升級、cold start 不爆量、
+        webhook URL 走 env）+ API `POST/GET /api/notify/log`（JSONL，留最近 500 筆）+ 警示頁通知紀錄小卡
+  - [ ] S2 預測不確定帶（45 分）｜S3 天氣特徵（60 分）｜S4 簡報 slides（45 分）｜S5 demo GIF（30 分）
 - [ ] **M7**（07:45–08:00）最終 push + 部署驗證 + SUMMARY.md → stop
 
 ## 資料事實（給後續 milestone 直接引用）
