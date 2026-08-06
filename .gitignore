@@ -1,8 +1,22 @@
 # 大型資料檔不進版控
 資料集/
+ref_data/*.duckdb
+ref_data/*.pdf
 *.duckdb
 *.csv
+data/
+_out/
 
 # Python
 __pycache__/
 *.pyc
+.venv/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+
+# 本機密鑰
+.env
+.env.local
