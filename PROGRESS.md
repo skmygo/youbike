@@ -110,9 +110,11 @@
         「原則 2 推論當下拿得到」。硬做只會做出一個永遠 degraded 的特徵。
         替代（若後續有時間）：規劃書 T1-B 官方辦公日曆表（data.gov.tw 可達、無需 key，含**補班日**），
         比目前資料驅動偵測的 18 個假期更精確；但需重訓 12 模型（約 31 分）才看得到效益
-  - [~] **S4 簡報 slides**：`web/public/slides.html` 單檔可放映簡報（11 頁，深色主題與網站一致，
-        方向鍵/點擊翻頁，走 SPA fallback 直接掛在 `/slides.html`）→ build 驗證中
-  - [ ] S5 demo GIF（30 分）
+  - [x] **S4 簡報 slides ✅ 已上線** <https://youbike.itsmygo.uk/slides.html>
+        （11 頁單檔，深色主題與網站一致，方向鍵/點擊翻頁，hash 記位置；本機容器截圖驗過封面與 KPI 頁）
+  - [x] **S5 demo GIF ✅**：`docs/demo.gif`（3.6MB / 30 秒 / 錄的是 production 實況）已進 README；
+        第一次錄漏了站點抽屜（selector 沒中），改用已驗證的 `tbody tr` 重錄才拍到預測帶
+  - **加分梯隊結算**：S1 ✅ S2 ✅ S3 ❌阻塞跳過 S4 ✅ S5 ✅
 - [ ] **M7**（07:45–08:00）最終 push + 部署驗證 + SUMMARY.md → stop
 
 ## 資料事實（給後續 milestone 直接引用）
