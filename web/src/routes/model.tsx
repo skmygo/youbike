@@ -512,7 +512,13 @@ export function ModelPage() {
               <ul className="list-disc space-y-1 pl-4">
                 <li>訓練資料抽樣（本機同時是正式服務主機，記憶體要留給線上服務）</li>
                 <li>沒有天氣、活動、學期等外生變數，雨天與大型活動會失準</li>
-                <li>假日是資料驅動偵測出來的，不是官方行事曆</li>
+                <li>
+                  假日是<b className="font-normal text-ink-dim">資料驅動偵測</b>出來的。我們拿人事行政總處的
+                  官方辦公日曆表對照過：官方 2026 上半年 11 個平日假日<b className="font-normal text-ink-dim">全部被抓到</b>，
+                  另外多抓 7 天（元旦隔天、春節前的週五、連假前後）——那些日子行政上要上班，
+                  但騎乘需求確實像假日。<b className="font-normal text-ink-dim">所以我們沒有改用官方行事曆</b>：
+                  模型要學的是需求型態，不是行政定義。（2026 年全年沒有補班日）
+                </li>
                 <li>線上推論的近期 lag 用「同站同時段的上一次觀測」暖機，即時資料累積後會自動變準</li>
               </ul>
             </div>
