@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>外部公開資料盤點 — 讓 YouBike 預測更準</title>
+<style>
+:root {
+  color-scheme: light;
+  --plane: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #8a8a82;
+  --accent-wash: #eef4fc;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --plane: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #7c7c74;
+    --accent-wash: #14202e;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d;
+  --surface-1: #1a1a19;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255,255,255,0.10);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #7c7c74;
+  --accent-wash: #14202e;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--plane); color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+  line-height: 1.65;
+}
+.wrap { max-width: 1000px; margin: 0 auto; padding: 40px 20px 64px; }
+header h1 { font-size: 28px; margin: 0 0 6px; }
+header .sub { color: var(--text-secondary); margin: 0 0 4px; }
+header .meta { color: var(--muted); font-size: 13px; }
+a { color: var(--series-1); }
+h2 { font-size: 20px; margin: 44px 0 12px; }
+h3 { font-size: 16px; margin: 24px 0 8px; }
+p.note { color: var(--text-secondary); }
+
+.card {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px; margin-top: 16px;
+}
+.card h3 { margin-top: 0; }
+.cards3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 16px; }
+.cards3 .card { margin-top: 0; }
+.card .kicker { font-size: 12px; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; }
+.card p:last-child, .card ul:last-child { margin-bottom: 0; }
+
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { color: var(--text-secondary); font-weight: 600; white-space: nowrap; }
+.table-scroll { overflow-x: auto; }
+tbody tr:hover { background: color-mix(in srgb, var(--grid) 35%, transparent); }
+code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+code { background: color-mix(in srgb, var(--grid) 50%, transparent); padding: 1px 5px; border-radius: 4px; }
+
+.src-card { border-left: 3px solid var(--series-1); }
+.src-card.t2 { border-left-color: var(--series-2); }
+.src-card.t3 { border-left-color: var(--series-3); }
+.src-card ul { margin: 8px 0; padding-left: 20px; }
+.src-card .out { font-size: 13.5px; color: var(--text-secondary); border-top: 1px solid var(--grid); margin-top: 12px; padding-top: 10px; }
+.src-card .out b { color: var(--text-primary); }
+
+.badge { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); white-space: nowrap; margin-right: 4px; }
+.badge.t1 { border-color: var(--series-1); color: var(--series-1); }
+.badge.t2 { border-color: var(--series-2); color: var(--series-2); }
+.badge.t3 { border-color: var(--series-3); color: var(--series-3); }
+.badge.warn { border-color: #d03b3b; color: #d03b3b; }
+
+.legend { display: flex; gap: 18px; align-items: center; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; flex-wrap: wrap; }
+.legend .key { display: inline-flex; align-items: center; gap: 6px; }
+.legend .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.chart-scroll { overflow-x: auto; }
+svg { display: block; width: 100%; height: auto; max-width: 760px; }
+svg text { font-family: inherit; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+footer { margin-top: 48px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--grid); padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>外部公開資料盤點：讓預測更準的資料源</h1>
+  <p class="sub">承接 <a href="分析規劃.html">分析規劃</a> WP3 預測模型・站點快照之外還能餵給模型什麼　|　只盤點、未爬取</p>
+  <p class="meta">現況：站點狀態已齊（黑客松 6 個月快照＋新北開放平台即時輪詢＋TDX 歷史回補）。本頁盤點的是快照裡沒有的<b>外生變數</b>。</p>
+</header>
+
+<h2>篩選三原則</h2>
+<p>不是所有「相關」的資料都值得爬。每個候選資料源用三個問題過濾：</p>
+<div class="cards3">
+  <div class="card">
+    <div class="kicker">原則 1</div>
+    <h3>歷史能回補</h3>
+    <p class="note">訓練集是 2026/01–06。拿不到這六個月對齊值的資料，模型根本學不到它——只有即時值的來源價值砍半。</p>
+  </div>
+  <div class="card">
+    <div class="kicker">原則 2</div>
+    <h3>推論當下拿得到</h3>
+    <p class="note">預測「未來 3 小時」時，特徵必須是<b>當下已知</b>的值：過去的觀測、未來的<b>預報</b>、或行事曆這種確定性資訊。拿事後觀測當特徵＝資料洩漏，回測分數好看、上線全垮。</p>
+  </div>
+  <div class="card">
+    <div class="kicker">原則 3</div>
+    <h3>黑客松工程成本</h3>
+    <p class="note">每接一個源都要清洗＋對齊到「站 × 30 分鐘槽」基底表。效益除以接入成本才是排序依據，不是效益本身。</p>
+  </div>
+</div>
+
+<h2>候選資料源總覽</h2>
+<div class="card">
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>優先</th><th>資料源</th><th>提供者</th><th>歷史回補</th><th>推論時可得</th><th>進模型的方式</th><th>成本</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="badge t1">T1</span></td>
+        <td><b>國定假日＋補班行事曆</b></td>
+        <td>人事行政總處（data.gov.tw）</td>
+        <td>✅ 全年檔</td>
+        <td>✅ 確定性</td>
+        <td>day_type 四分類（工作日／週末／國定假日／<b>補班日</b>）、連假第幾天</td>
+        <td class="num">極低</td>
+      </tr>
+      <tr>
+        <td><span class="badge t1">T1</span></td>
+        <td><b>天氣：觀測＋預報</b></td>
+        <td>中央氣象署開放資料平臺</td>
+        <td>✅ CODiS 逐時觀測</td>
+        <td>✅ 觀測（當下）＋鄉鎮預報（未來）</td>
+        <td>近 1／3 小時雨量、氣溫、未來 3 小時降雨預報，站點配最近雨量站</td>
+        <td class="num">中</td>
+      </tr>
+      <tr>
+        <td><span class="badge t1">T1</span></td>
+        <td><b>學校行事曆</b></td>
+        <td>教育局公告（手工 4 個日期）</td>
+        <td>✅ 公告即歷史</td>
+        <td>✅ 確定性</td>
+        <td>is_semester／寒暑假旗標 × 站點距校園距離</td>
+        <td class="num">極低</td>
+      </tr>
+      <tr>
+        <td><span class="badge t1">T1</span></td>
+        <td><b>捷運／台鐵運量</b></td>
+        <td>data.taipei・台北捷運・data.gov.tw</td>
+        <td>✅ 月度公布（有時滯）</td>
+        <td>△ 當「靜態剖面」用</td>
+        <td>各站最近軌道站的「該小時典型進出人次」當站點情境特徵</td>
+        <td class="num">中</td>
+      </tr>
+      <tr>
+        <td><span class="badge t2">T2</span></td>
+        <td><b>台北市＋桃園 YouBike 鄰站</b></td>
+        <td>TDX（同一支歷史 API）＋data.taipei</td>
+        <td>✅ 改 City 參數即回補</td>
+        <td>✅ 即時 JSON</td>
+        <td>邊界站（三重蘆洲永和中和新店汐止…）的鄰近站特徵補上台北側</td>
+        <td class="num">低（腳本現成）</td>
+      </tr>
+      <tr>
+        <td><span class="badge t2">T2</span></td>
+        <td><b>POI ＋人口統計</b></td>
+        <td>OSM Overpass・內政部 SEGIS</td>
+        <td>✅ 靜態</td>
+        <td>✅ 靜態</td>
+        <td>300m 內超商／辦公／校園數、統計區人口密度——餵分群與冷啟動</td>
+        <td class="num">中</td>
+      </tr>
+      <tr>
+        <td><span class="badge t3">T3</span></td>
+        <td>台北 YouBike OD 租借紀錄</td>
+        <td>data.taipei（月檔）</td>
+        <td>✅</td>
+        <td>△ 只能學型態</td>
+        <td>學「流動方向」型態遷移到新北同類站；簡報素材佳</td>
+        <td class="num">高</td>
+      </tr>
+      <tr>
+        <td><span class="badge t3">T3</span></td>
+        <td>大型活動事件表</td>
+        <td>手工整理（10–20 列 CSV）</td>
+        <td>✅ 手工</td>
+        <td>✅ 事前已知</td>
+        <td>event 旗標 × 場館周邊站；燈會／馬拉松／演唱會</td>
+        <td class="num">低</td>
+      </tr>
+      <tr>
+        <td><span class="badge t3">T3</span></td>
+        <td>空氣品質 AQI</td>
+        <td>環境部開放資料</td>
+        <td>✅ 逐時歷史</td>
+        <td>✅ 逐時</td>
+        <td>AQI 分級旗標；效應小、與天氣共線</td>
+        <td class="num">低</td>
+      </tr>
+      <tr>
+        <td><span class="badge t3">T3</span></td>
+        <td>道路施工／站點異動公告</td>
+        <td>新北市資料開放平臺</td>
+        <td>△ 需確認</td>
+        <td>✅</td>
+        <td>解釋個別站異常（停用、遷站），偏資料清洗用途</td>
+        <td class="num">中</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<h2>效益 × 成本一眼看</h2>
+<div class="card">
+  <div class="legend">
+    <span class="key"><span class="swatch" style="background:var(--series-1)"></span>Tier 1 先做</span>
+    <span class="key"><span class="swatch" style="background:var(--series-2)"></span>Tier 2 行有餘力</span>
+    <span class="key"><span class="swatch" style="background:var(--series-3)"></span>Tier 3 加分／慎入</span>
+  </div>
+  <div class="chart-scroll"><div id="chart-scatter"></div></div>
+  <p class="note" style="margin-top:8px">左上角＝便宜又有效。<b>行事曆兩項幾乎零成本</b>，天氣工程量較大但對準確度的貢獻預期最高（5–6 月梅雨正好落在訓練與測試窗內）。</p>
+</div>
+
+<h2>Tier 1：預期直接拉高準確度</h2>
+
+<div class="card src-card">
+  <h3>A. 中央氣象署——雨量觀測＋鄉鎮預報 <span class="badge t1">效益最高</span></h3>
+  <p>下雨是騎乘需求的第一外生殺手，也是「同一個星期二，需求卻差三成」的主因——這正是純時間特徵模型的誤差來源。訓練窗 1–6 月橫跨冬季鋒面與 5–6 月梅雨，雨天樣本充足。</p>
+  <ul>
+    <li><b>歷史觀測（訓練用）</b>：CODiS 氣候資料服務系統 <a href="https://codis.cwa.gov.tw/">codis.cwa.gov.tw</a>，逐時氣溫／雨量可按測站下載。新北境內自動雨量站數十個，每個 YouBike 站配<b>最近雨量站</b>；氣溫用板橋等代表站即可。</li>
+    <li><b>即時觀測（上線用）</b>：開放資料平臺 <a href="https://opendata.cwa.gov.tw/">opendata.cwa.gov.tw</a>（免費註冊 API key）——自動氣象站 <code>O-A0001-001</code>、自動雨量站 <code>O-A0002-001</code>，約 10 分鐘更新。</li>
+    <li><b>預報（讓模型看得到未來）</b>：鄉鎮天氣預報 <code>F-D0047</code> 系列（新北市逐 3 小時），把「未來 3 小時降雨機率／量」直接當特徵。</li>
+    <li><b>警特報</b>：豪雨／大雨特報（<code>W-C0033</code>）可當極端天候旗標，也是警示引擎的展示素材。</li>
+  </ul>
+  <ul>
+    <li>建議特徵：<code>rain_now</code>、<code>rain_last_1h/3h</code>、<code>temp</code>、<code>rain_next_3h_forecast</code>、<code>is_raining × hour</code> 交互。</li>
+    <li><span class="badge warn">洩漏警告</span>回測時「未來時段」只能用<b>預報值或當下觀測</b>，不能用事後觀測。最簡單的誠實做法：特徵一律只取「預測時點之前」的觀測；預報值當加分項另做一組 ablation。</li>
+  </ul>
+  <div class="out">接入成本主要在：測站清單→站點配對（一次性）＋逐時對齊到 30 分槽。預期是<b>所有外部資料中對 MAE 改善最大的一項</b>。</div>
+</div>
+
+<div class="card src-card">
+  <h3>B. 行事曆——國定假日、補班日、寒暑假 <span class="badge t1">近乎零成本</span></h3>
+  <p>台灣特有的<b>補班週六</b>長得像工作日、<b>彈性放假週五</b>長得像週日——只用 day-of-week 的模型在這些天必錯。訓練窗內就有春節（2 月）、228、清明、端午等多個連假。</p>
+  <ul>
+    <li><b>政府行政機關辦公日曆表</b>：data.gov.tw 搜「辦公日曆表」（人事行政總處，全年 CSV，<a href="https://data.gov.tw/dataset/14718">dataset 14718</a>），含放假與補班標記。一個檔案解決。</li>
+    <li><b>學校行事曆</b>：不用爬——新北教育局公告抓 4 個日期就夠：寒假起訖（1 月底–2 月中）、開學日、暑假開始（6 月底，剛好在測試窗尾）。大學周邊站（輔大、淡江…）另補各校行事曆，寒暑假需求型態完全不同。</li>
+    <li>建議特徵：<code>day_type</code> ∈ {工作日, 週末, 國定假日, 補班日}、<code>連假第幾天／共幾天</code>、<code>is_school_break</code> × 距最近校園距離。</li>
+  </ul>
+  <div class="out">確定性資料、零洩漏風險、半小時就能接完——<b>性價比全場最高，沒有理由不做</b>。</div>
+</div>
+
+<div class="card src-card">
+  <h3>C. 軌道運量——捷運分時進出、台鐵每日進出</h3>
+  <p>命題自己說了：空滿熱點集中在捷運站周邊。YouBike 是捷運的最後一哩，捷運吐出多少人，站點就被借走多少車。</p>
+  <ul>
+    <li><b>臺北捷運各站分時進出量</b>：data.taipei 搜「捷運分時進出」或台北捷運官網運量專區（月度 CSV、逐時、逐站）——新北境內的板南、中和新蘆、淡水信義線各站都在裡面。</li>
+    <li><b>台鐵每日各站進出人數</b>：data.gov.tw 搜「臺鐵每日各站點進出站人數」（板橋、樹林、汐止、鶯歌…）。</li>
+    <li><b>環狀線／淡海輕軌／安坑輕軌</b>：新北捷運公司運量統計，粒度可能只有月度——需上平臺確認，拿不到細粒度就只用「距輕軌站距離」當靜態特徵。</li>
+    <li><b>站點與出入口座標</b>：TDX <code>Rail/Metro/Station</code>、<code>StationExit</code>（你已有 TDX 金鑰），算每個 YouBike 站到最近軌道出入口的距離。</li>
+  </ul>
+  <ul>
+    <li><span class="badge">用法關鍵</span>運量月報有 1–2 個月時滯，<b>不能當即時特徵</b>；正確用法是做成<b>靜態剖面</b>：「此 YouBike 站最近的捷運站，在星期 d 第 h 小時的歷史平均進出人次」。這讓模型分得出「捷運強站旁的站」和「巷口站」，對跨站泛化與冷啟動特別有效。</li>
+  </ul>
+  <div class="out">產出兩個特徵組：<code>dist_to_rail</code>（靜態）＋<code>rail_hourly_profile</code>（站 × 週時矩陣）。也是簡報空間分析的好素材。</div>
+</div>
+
+<h2>Tier 2：行有餘力再加</h2>
+
+<div class="card src-card t2">
+  <h3>D. 台北市＋桃園 YouBike——把鄰近站特徵補完整 <span class="badge t2">腳本現成</span></h3>
+  <p>雙北是同一張 YouBike 網。三重、蘆洲、永和、中和、新店、汐止的邊界站，使用者跨河借還是日常——只看新北側，鄰近站特徵在邊界是殘缺的。</p>
+  <ul>
+    <li><b>歷史</b>：你的 <code>backfill_tdx.py</code> 把 <code>City/NewTaipei</code> 換成 <code>City/Taipei</code>（或 <code>Taoyuan</code>，林口鶯歌邊界）就能直接回補，工程幾乎為零。</li>
+    <li><b>即時</b>：台北市即時 JSON（data.taipei「YouBike2.0 臺北市公共自行車即時資訊」，<code>tcgbusfs.blob.core.windows.net/dotapp/youbike/v2/youbike_immediate.json</code>，一分鐘更新、免金鑰）。</li>
+    <li>用法：不必全量進基底表——只取<b>距新北市界 1.5 公里內</b>的台北／桃園站，餵進既有的「鄰近站聚合庫存」特徵即可。</li>
+  </ul>
+  <div class="out">成本低是因為管線都寫好了；效益集中在邊界行政區的站，全市平均改善有限但<b>邊界站改善明顯</b>——簡報可以挑一個永和站當案例。</div>
+</div>
+
+<div class="card src-card t2">
+  <h3>E. POI 與人口——站點的「體質」特徵</h3>
+  <ul>
+    <li><b>OpenStreetMap Overpass API</b>（<a href="https://overpass-turbo.eu/">overpass-turbo.eu</a>）：每站 300m 內的超商、學校、辦公、公園、市場、醫院數量——一次性抓取，免金鑰。</li>
+    <li><b>內政部 SEGIS 社會經濟資料服務平台</b>（<a href="https://segis.moi.gov.tw/">segis.moi.gov.tw</a>）：最小統計區人口數、年齡結構、戶數——站點涵蓋圈的居住密度。</li>
+    <li>用法：直接餵 WP1 的站點分群（取代或驗證純曲線分群），並當模型的靜態站點特徵——對<b>新啟用站</b>（歷史不足、lag 特徵空白）的冷啟動預測尤其重要。</li>
+  </ul>
+  <div class="out">對既有站的短期預測改善有限（站點 ID／分群標籤已隱含大部分資訊），但讓「為什麼這站會這樣」講得出因果故事，分群圖直接進簡報。</div>
+</div>
+
+<h2>Tier 3：加分項，時間換故事</h2>
+
+<div class="card src-card t3">
+  <h3>F. 其餘候選，一句話講完該不該碰</h3>
+  <ul>
+    <li><b>台北 YouBike OD 租借紀錄</b>（data.taipei 月檔，每月數百萬筆）：新北沒有公開 OD，但台北的可以學「流動方向」型態（住宅→捷運→辦公）遷移到新北同類型站。工程大、遷移假設要另外驗證——<b>黑客松內不划算，簡報提一句「未來若取得新北 OD 可如何升級」更聰明</b>。</li>
+    <li><b>大型活動事件表</b>：手工 CSV 10–20 列就好——訓練窗內有平溪天燈節（2–3 月）、萬金石馬拉松（3 月）、大型演唱會；欄位：日期、場館座標、影響半徑。個別站在活動日的殘差會漂亮地被解釋掉。</li>
+    <li><b>空氣品質 AQI</b>（<a href="https://data.moenv.gov.tw/">data.moenv.gov.tw</a>，逐時歷史齊全）：效應真實存在但小，且與天氣高度共線——接入便宜，放在 ablation 清單最後。</li>
+    <li><b>道路施工／站點停用公告</b>（新北市資料開放平臺搜「道路施工」）：主要價值是<b>資料清洗</b>——解釋「這站連續兩週零車」是停用不是需求，避免模型學到假訊號。</li>
+    <li><b>新北 YouBike 騎乘人次／營運月統計</b>（data.ntpc.gov.tw 上另有彙總型資料集，需上平臺確認粒度）：月彙總粒度太粗進不了模型，但可交叉驗證我們從快照推出的需求量級。</li>
+  </ul>
+</div>
+
+<div class="card src-card t3">
+  <h3>G. 免爬就有的衍生特徵（先做這些再談爬）</h3>
+  <ul>
+    <li><b>日出日落時刻</b>：用 <code>astral</code> 之類套件本地計算——晚間空車率 8.5% 全日最高，天黑時間 1–6 月變動近一小時，可能就是解釋變數之一。</li>
+    <li><b>週期編碼</b>：hour／weekday 的 sin-cos、月份、學期進度。</li>
+    <li><b>颱風假／停班停課</b>：訓練窗內若有，人事行政總處公告手工補一欄即可。</li>
+  </ul>
+</div>
+
+<div class="card src-card t3">
+  <h3>H. 明確不建議碰的</h3>
+  <ul>
+    <li><b>Google Maps 熱門時段</b>：無公開 API，爬取違反服務條款——比賽場合用來路不明的資料是扣分不是加分。</li>
+    <li><b>電信信令人流</b>：非公開資料，需採購。</li>
+    <li><b>悠遊卡個人層級紀錄</b>：涉個資，不存在公開版本。</li>
+  </ul>
+</div>
+
+<h2>建議行動順序：每加一組，回測一次</h2>
+<div class="card">
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>順序</th><th>動作</th><th class="num">預估工時</th><th>驗證方式</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>辦公日曆表＋學校行事曆（B）＋免爬衍生特徵（G）</td><td class="num">0.5 天</td><td rowspan="4">固定 6 月測試集，<b>每加一組特徵重跑一次回測</b>，記 MAE 與空滿事件 F1 的差值——這張「哪些外部資料真的有用」的 ablation 表本身就是簡報亮點，比堆資料源更能展現方法論。</td></tr>
+      <tr><td>2</td><td>CWA 歷史觀測回補＋即時／預報接入（A）</td><td class="num">1–1.5 天</td></tr>
+      <tr><td>3</td><td>TDX 改參數回補台北側邊界站（D）</td><td class="num">0.5 天</td></tr>
+      <tr><td>4</td><td>捷運分時剖面（C）→ POI／人口（E）→ 事件表、AQI（F）</td><td class="num">各 0.5–1 天</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note" style="margin-top:12px"><b>停損原則</b>：任何一組特徵若 ablation 顯示對 6 月測試集沒有可辨識的改善，直接從管線移除、只在簡報註記「已驗證無效」。誠實的負結果在評審面前同樣值錢。</p>
+</div>
+
+<footer>
+  外部資料盤點・僅規劃未爬取（2026-08-06）。資料集現況見 <a href="資料集介紹.html">資料集介紹.html</a>，整體規劃見 <a href="分析規劃.html">分析規劃.html</a>。標註「需上平臺確認」者，實作前先驗證資料集仍在架上與實際粒度。
+</footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function tokens() {
+    var c = getComputedStyle(document.documentElement);
+    return {
+      s1: c.getPropertyValue("--series-1").trim(),
+      s2: c.getPropertyValue("--series-2").trim(),
+      s3: c.getPropertyValue("--series-3").trim(),
+      grid: c.getPropertyValue("--grid").trim(),
+      baseline: c.getPropertyValue("--baseline").trim(),
+      muted: c.getPropertyValue("--muted").trim(),
+      text: c.getPropertyValue("--text-primary").trim(),
+      surface: c.getPropertyValue("--surface-1").trim()
+    };
+  }
+
+  // [名稱, 成本0-10, 效益0-10, tier, 標籤錨點, dx, dy]
+  var pts = [
+    ["行事曆(假日+補班)", 1.2, 8.6, 1, "start",  10,  4],
+    ["天氣 觀測+預報",     4.8, 9.4, 1, "start",  10,  4],
+    ["學校行事曆",         1.8, 6.8, 1, "start",  10,  4],
+    ["捷運/台鐵運量",      4.6, 6.2, 1, "start",  10,  4],
+    ["雙北鄰站(TDX)",      3.2, 5.4, 2, "start",  10,  4],
+    ["POI+人口",           5.4, 4.2, 2, "start",  10,  4],
+    ["台北 OD 紀錄",       7.6, 4.8, 3, "end",   -10,  4],
+    ["活動事件表",         1.6, 3.2, 3, "start",  10,  4],
+    ["AQI",                2.8, 2.1, 3, "start",  10,  4],
+    ["施工/站點異動",      5.8, 1.6, 3, "start",  10,  4]
+  ];
+
+  function draw() {
+    var t = tokens();
+    var host = document.getElementById("chart-scatter");
+    host.innerHTML = "";
+    var W = 680, H = 360, mL = 46, mR = 20, mT = 18, mB = 44;
+    var pw = W - mL - mR, ph = H - mT - mB;
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
+      "aria-label": "各外部資料源的接入成本與預期效益散佈圖，內容同上方總覽表" }, host);
+    function X(v) { return mL + pw * v / 10; }
+    function Y(v) { return mT + ph * (1 - v / 10); }
+
+    [0, 5, 10].forEach(function (g) {
+      el("line", { x1: mL, x2: mL + pw, y1: Y(g), y2: Y(g),
+        stroke: g === 0 ? t.baseline : t.grid, "stroke-width": 1,
+        "stroke-dasharray": g === 5 ? "4 4" : "none" }, svg);
+      el("line", { y1: mT, y2: mT + ph, x1: X(g), x2: X(g),
+        stroke: g === 0 ? t.baseline : t.grid, "stroke-width": 1,
+        "stroke-dasharray": g === 5 ? "4 4" : "none" }, svg);
+    });
+    el("text", { x: mL + pw / 2, y: H - 10, "text-anchor": "middle", "font-size": 12, fill: t.muted }, svg)
+      .textContent = "接入成本（清洗＋對齊工程量）→";
+    var yl = el("text", { x: 14, y: mT + ph / 2, "font-size": 12, fill: t.muted,
+      transform: "rotate(-90 14 " + (mT + ph / 2) + ")", "text-anchor": "middle" }, svg);
+    yl.textContent = "預期準確度效益 →";
+    el("text", { x: mL + 8, y: mT + 14, "font-size": 11.5, fill: t.muted }, svg).textContent = "便宜又有效";
+
+    var colors = { 1: t.s1, 2: t.s2, 3: t.s3 };
+    pts.forEach(function (p) {
+      el("circle", { cx: X(p[1]), cy: Y(p[2]), r: 6, fill: colors[p[3]],
+        stroke: t.surface, "stroke-width": 2 }, svg);
+      el("text", { x: X(p[1]) + p[5], y: Y(p[2]) + p[6], "text-anchor": p[4],
+        "font-size": 12, fill: t.text }, svg).textContent = p[0];
+    });
+  }
+
+  draw();
+  if (window.matchMedia) {
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+  }
+})();
+</script>
+</body>
+</html>

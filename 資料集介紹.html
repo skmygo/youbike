@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新北市 YouBike 2.0 站點資料集介紹</title>
+<style>
+:root {
+  color-scheme: light;
+  --plane: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --series-1: #2a78d6;   /* 無車可借 */
+  --series-2: #eb6834;   /* 無位可還 */
+  --warn-bg: #fdf6ec;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --plane: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --warn-bg: #26200f;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d;
+  --surface-1: #1a1a19;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255,255,255,0.10);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --warn-bg: #26200f;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+  line-height: 1.65;
+}
+.wrap { max-width: 1000px; margin: 0 auto; padding: 40px 20px 64px; }
+header h1 { font-size: 28px; margin: 0 0 6px; }
+header .sub { color: var(--text-secondary); margin: 0 0 4px; }
+header .meta { color: var(--muted); font-size: 13px; }
+a { color: var(--series-1); }
+h2 { font-size: 20px; margin: 44px 0 12px; }
+h3 { font-size: 16px; margin: 24px 0 8px; }
+p.note { color: var(--text-secondary); }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 12px; margin-top: 20px; }
+.tile {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px;
+}
+.tile .label { font-size: 13px; color: var(--text-secondary); }
+.tile .value { font-size: 26px; font-weight: 600; margin-top: 2px; }
+.tile .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.card {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px; margin-top: 16px;
+}
+.card h3 { margin-top: 0; }
+.card .chart-sub { color: var(--muted); font-size: 13px; margin: -4px 0 10px; }
+.chart-scroll { overflow-x: auto; }
+svg { display: block; width: 100%; height: auto; max-width: 760px; }
+svg text { font-family: inherit; }
+
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--grid); }
+th { color: var(--text-secondary); font-weight: 600; white-space: nowrap; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.table-scroll { overflow-x: auto; }
+tbody tr:hover { background: color-mix(in srgb, var(--grid) 35%, transparent); }
+.tag {
+  display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--text-secondary); white-space: nowrap;
+}
+code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+code { background: color-mix(in srgb, var(--grid) 50%, transparent); padding: 1px 5px; border-radius: 4px; }
+
+details { margin-top: 10px; }
+details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; }
+details[open] summary { margin-bottom: 8px; }
+
+ol.issues { padding-left: 22px; }
+ol.issues > li { margin: 10px 0; }
+ol.issues b { font-weight: 600; }
+
+.legend { display: flex; gap: 18px; align-items: center; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; flex-wrap: wrap; }
+.legend .key { display: inline-flex; align-items: center; gap: 6px; }
+.legend .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+#tooltip {
+  position: fixed; pointer-events: none; z-index: 10; display: none;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  color: var(--text-primary); white-space: nowrap;
+}
+#tooltip .t-title { color: var(--text-secondary); font-size: 12px; margin-bottom: 2px; }
+#tooltip .t-row { display: flex; align-items: center; gap: 6px; }
+#tooltip .t-row .swatch { width: 8px; height: 8px; border-radius: 2px; }
+footer { margin-top: 48px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--grid); padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>新北市 YouBike 2.0 站點資料集介紹</h1>
+  <p class="sub">2026 年 1–6 月・全市租賃站每 30 分鐘車位快照，共 12 個 CSV 檔</p>
+  <p class="meta">資料位置：<span class="mono">資料集/</span>　|　用途：新北市政府 AI 黑客松（交通局命題）　|　分析規劃見 <a href="分析規劃.html">分析規劃.html</a></p>
+</header>
+
+<div class="kpis">
+  <div class="tile"><div class="label">總筆數</div><div class="value">1,332 萬</div><div class="hint">13,324,945 筆快照</div></div>
+  <div class="tile"><div class="label">涵蓋期間</div><div class="value">181 天</div><div class="hint">2026/01/01 – 06/30</div></div>
+  <div class="tile"><div class="label">租賃站</div><div class="value">1,576</div><div class="hint">6 月站數（1 月為 1,521）</div></div>
+  <div class="tile"><div class="label">行政區</div><div class="value">29</div><div class="hint">新北市全境</div></div>
+  <div class="tile"><div class="label">快照頻率</div><div class="value">30 分</div><div class="hint">每站每日 48 筆</div></div>
+  <div class="tile"><div class="label">檔案大小</div><div class="value">1.03 GB</div><div class="hint">12 個 CSV</div></div>
+</div>
+
+<h2>這是什麼資料</h2>
+<p>每一列是<b>某個租賃站在某個時間點的庫存快照</b>：當下有幾台車可借、幾個空位可還。來源是「新北市資料開放平台－新北市公共自行車租賃系統 (YouBike2.0)」的即時資料，由主辦單位每 30 分鐘留存一次、累積成 6 個月的歷史數據。</p>
+<p class="note">注意：這<b>不是</b>借還交易紀錄（沒有騎乘起訖），所以分析的核心對象是「站點庫存隨時間的變化」——空車、滿位、供需失衡，正好對應命題要解的調度問題。</p>
+
+<h2>檔案清單</h2>
+<p>12 個檔案分成兩組，<b>欄位完全相同，但編碼與時間格式不同</b>，合併前要先統一：</p>
+<div class="card">
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>檔名</th><th>期間</th><th class="num">筆數</th><th class="num">大小</th><th>編碼</th><th>時間格式</th></tr></thead>
+    <tbody>
+      <tr><td>YouBike 一月資料.csv 的副本.csv</td><td>01/01–01/31</td><td class="num">2,254,674</td><td class="num">190 MB</td><td><span class="tag">UTF-8</span></td><td class="mono">2026/01/11 18:00</td></tr>
+      <tr><td>YouBike 二月資料.csv 的副本.csv</td><td>02/01–02/28</td><td class="num">2,047,641</td><td class="num">173 MB</td><td><span class="tag">UTF-8</span></td><td class="mono">同上（含引號）</td></tr>
+      <tr><td>YouBike 六月資料.csv 的副本.csv</td><td>06/01–06/30</td><td class="num">2,240,462</td><td class="num">189 MB</td><td><span class="tag">UTF-8</span></td><td class="mono">同上（含引號）</td></tr>
+      <tr><td>新北AWS黑克松競賽0301-14.csv 的副本.csv</td><td>03/01–03/14</td><td class="num">1,026,189</td><td class="num">75 MB</td><td><span class="tag">Big5</span></td><td class="mono">2026-03-01 23:30:40</td></tr>
+      <tr><td>新北AWS黑克松競賽0315-28.csv 的副本.csv</td><td>03/15–03/28</td><td class="num">1,028,781</td><td class="num">76 MB</td><td><span class="tag">Big5</span></td><td class="mono">同上（含秒）</td></tr>
+      <tr><td>新北AWS黑克松競賽0329-31.csv 的副本.csv</td><td>03/29–03/31</td><td class="num">219,076</td><td class="num">16 MB</td><td><span class="tag">Big5</span></td><td class="mono">同上</td></tr>
+      <tr><td>新北AWS黑克松競賽0401-14.csv 的副本.csv</td><td>04/01–04/14</td><td class="num">1,030,651</td><td class="num">76 MB</td><td><span class="tag">Big5</span></td><td class="mono">同上</td></tr>
+      <tr><td>新北AWS黑克松競賽0415-28.csv 的副本.csv</td><td>04/15–04/28</td><td class="num">1,032,669</td><td class="num">76 MB</td><td><span class="tag">Big5</span></td><td class="mono">同上</td></tr>
+      <tr><td>新北AWS黑克松競賽0429-30.csv 的副本.csv</td><td>04/29–04/30</td><td class="num">147,648</td><td class="num">11 MB</td><td><span class="tag">Big5</span></td><td class="mono">同上</td></tr>
+      <tr><td>新北AWS黑克松競賽0501-14.csv 的副本.csv</td><td>05/01–05/14</td><td class="num">1,034,673</td><td class="num">76 MB</td><td><span class="tag">Big5</span></td><td class="mono">同上</td></tr>
+      <tr><td>新北AWS黑克松競賽0515-28.csv 的副本.csv</td><td>05/15–05/28</td><td class="num">1,039,425</td><td class="num">76 MB</td><td><span class="tag">Big5</span></td><td class="mono">同上</td></tr>
+      <tr><td>新北AWS黑克松競賽0529-31.csv 的副本.csv</td><td>05/29–05/31</td><td class="num">223,056</td><td class="num">16 MB</td><td><span class="tag">Big5</span></td><td class="mono">同上</td></tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<h2>欄位結構（9 欄，兩組相同）</h2>
+<div class="card">
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>欄位</th><th>型別</th><th>說明</th><th>範例</th></tr></thead>
+    <tbody>
+      <tr><td>日期</td><td>時間戳</td><td>快照時間。月份檔精確到分；黑客松檔含秒（實際採樣比整/半點晚約 30–60 秒）</td><td class="mono">2026/01/11 18:00・2026-03-01 23:30:40</td></tr>
+      <tr><td>城市</td><td>文字</td><td>固定為「新北市」，可捨棄</td><td>新北市</td></tr>
+      <tr><td>行政區</td><td>文字</td><td>29 個行政區（有一站缺值，見下方品質注意事項）</td><td>板橋區</td></tr>
+      <tr><td>場站名稱</td><td>文字</td><td><b>資料集裡唯一的站點識別</b>——沒有數字站點 ID，需以名稱（搭配座標）當主鍵</td><td>三井Outlet</td></tr>
+      <tr><td>總車柱數</td><td>整數</td><td>該站車柱總數（容量）</td><td>63</td></tr>
+      <tr><td>可借車數</td><td>整數</td><td>當下可借車輛數；<b>= 0 即「無車可借」</b></td><td>48</td></tr>
+      <tr><td>可還位數</td><td>整數</td><td>當下可還空位數；<b>= 0 即「無位可還」</b></td><td>15</td></tr>
+      <tr><td>經度</td><td>浮點</td><td>WGS84</td><td class="mono">121.36629</td></tr>
+      <tr><td>緯度</td><td>浮點</td><td>WGS84</td><td class="mono">25.07158</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note" style="font-size:13px; margin-bottom:0">通常「可借 + 可還 ≈ 總柱數」，差額是故障柱或調度中車輛，不必然相等。</p>
+</div>
+
+<h2>逐月概況與空滿率</h2>
+<p>把「可借車數 = 0」的快照占比定義為<b>空車率</b>、「可還位數 = 0」占比定義為<b>滿位率</b>。六個月整體：空車率約 5–6%、滿位率約 2%，空車問題比滿位問題大三倍：</p>
+<div class="card">
+  <h3>月別空車率與滿位率</h3>
+  <div class="chart-sub">全站全月快照中「無車可借」「無位可還」的占比（%）</div>
+  <div class="legend">
+    <span class="key"><span class="swatch" style="background:var(--series-1)"></span>無車可借（空車率）</span>
+    <span class="key"><span class="swatch" style="background:var(--series-2)"></span>無位可還（滿位率）</span>
+  </div>
+  <div class="chart-scroll"><div id="chart-monthly"></div></div>
+  <details>
+    <summary>表格檢視</summary>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>月份</th><th class="num">筆數</th><th class="num">站數*</th><th class="num">空車率</th><th class="num">滿位率</th></tr></thead>
+      <tbody>
+        <tr><td>1 月</td><td class="num">2,254,674</td><td class="num">1,521</td><td class="num">5.24%</td><td class="num">1.98%</td></tr>
+        <tr><td>2 月</td><td class="num">2,047,641</td><td class="num">1,527</td><td class="num">4.81%</td><td class="num">1.97%</td></tr>
+        <tr><td>3 月</td><td class="num">2,274,046</td><td class="num">1,532</td><td class="num">6.00%</td><td class="num">1.86%</td></tr>
+        <tr><td>4 月</td><td class="num">2,210,968</td><td class="num">1,538</td><td class="num">5.90%</td><td class="num">1.89%</td></tr>
+        <tr><td>5 月</td><td class="num">2,297,154</td><td class="num">1,549</td><td class="num">6.29%</td><td class="num">1.92%</td></tr>
+        <tr><td>6 月</td><td class="num">2,240,462</td><td class="num">1,576</td><td class="num">5.66%</td><td class="num">1.95%</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="note" style="font-size:13px">* 站數為該月份檔案內出現過的不重複場站名稱數（3–5 月取各分檔最大值）。快照完整度約 98–99%（理論上每站每日 48 筆）。</p>
+  </details>
+</div>
+
+<h2>一天的節奏（6 月逐時）</h2>
+<p>逐時曲線直接呼應命題的「尖峰痛點」：<b>清晨 6 時是全日庫存最健康的時刻</b>（凌晨調度補車後），之後 8–9 時通勤高峰空車率跳升；晚間 18 時起空車與滿位同時惡化，<b>空車率在 22 時達到全日最高 8.5%</b>——晚間與夜間的失衡比早尖峰更嚴重，是調度的主戰場：</p>
+<div class="card">
+  <h3>6 月逐時空車率與滿位率</h3>
+  <div class="chart-sub">各小時全站快照的空／滿占比（%）・滑鼠移入可看逐時數值</div>
+  <div class="legend">
+    <span class="key"><span class="swatch" style="background:var(--series-1)"></span>無車可借（空車率）</span>
+    <span class="key"><span class="swatch" style="background:var(--series-2)"></span>無位可還（滿位率）</span>
+  </div>
+  <div class="chart-scroll"><div id="chart-hourly"></div></div>
+  <details>
+    <summary>表格檢視</summary>
+    <div class="table-scroll"><div id="table-hourly"></div></div>
+  </details>
+</div>
+
+<h2>站點分布（6 月，共 1,576 站）</h2>
+<p>板橋一區就有 222 站，前六區（板橋、新莊、三重、新店、中和、土城）合計過半；山區（雙溪、烏來等）只有個位數站點。調度資源與分析重點都應放在人口稠密的都會區：</p>
+<div class="card">
+  <h3>各行政區站點數</h3>
+  <div class="chart-sub">2026 年 6 月出現過的不重複場站數</div>
+  <div class="chart-scroll"><div id="chart-district"></div></div>
+  <details>
+    <summary>表格檢視</summary>
+    <div class="table-scroll"><div id="table-district"></div></div>
+  </details>
+</div>
+
+<h2>資料品質注意事項（分析前必讀）</h2>
+<div class="card" style="background: var(--warn-bg)">
+  <ol class="issues" style="margin: 0">
+    <li><b>兩種編碼。</b>「新北AWS黑克松競賽」9 個檔是 <b>Big5</b>（pandas 用 <code>encoding="big5"</code>，或先 <code>iconv -f big5 -t utf-8</code>）；月份檔是 UTF-8 且欄值帶引號。直接混讀會得到亂碼。</li>
+    <li><b>兩種時間格式。</b><code>2026/01/11 18:00</code> vs <code>2026-03-01 23:30:40</code>；黑客松檔含秒（採樣比整/半點晚 30–60 秒），合併時建議一律<b>向下取整到 30 分鐘槽</b>。</li>
+    <li><b>Big5 匯出損毀 6 個站名。</b>黑客松檔把 Big5 字集外的罕用字寫成「?」（獇寮公園→<code>?寮公園</code>、瓦磘溝(福真里)→<code>瓦?溝(福真里)</code>、十四張啓文路口、金城峯廷街口、瓦磘截流站、樂活绽社區），使同一站在 3–5 月與 1/2/6 月變成兩個名字，需用座標配對修復。</li>
+    <li><b>沒有站點 ID。</b>唯一識別是「場站名稱」，需以名稱＋經緯度建站點主檔，並檢查期間內是否有更名或座標異動。</li>
+    <li><b>疑似未營運站。</b>6 月有 <b>18 個站整月「可借車數 = 0」</b>（如興華公園：45 柱、全月 0 車、45 空位），其中 9 站是<b>整整六個月</b>零車，應是尚未啟用或停用中。若不排除，全體空車率會被墊高約 1 個百分點，模型也會學到假訊號。</li>
+    <li><b>站點會更名。</b>「美麗新淡海影城」在 04/01 13:30 起更名為「新市五義山路口」（同座標無縫接軌）；舊名在黑客松檔中行政區還是空字串（1,514 筆）。以名稱當主鍵時要合併這類前後名。</li>
+    <li><b>資料列非時間排序。</b>月份檔尤其亂序，做時間序列前必須先依（場站、時間）排序。</li>
+    <li><b>快照有缺漏。</b>完整度約 98–99%，且期間內站數從 1,521 增至 1,576（新站陸續啟用），時間序列會有站點起訖不齊的問題。</li>
+    <li><b>3–5 月一個月拆三檔</b>（1–14 日、15–28 日、29–月底），要合併三檔才是完整月份。</li>
+  </ol>
+</div>
+
+<h2>讀取範例</h2>
+<div class="card">
+<pre class="mono" style="margin:0; overflow-x:auto; font-size:13px; line-height:1.6">import pandas as pd
+
+cols = ["日期","城市","行政區","場站名稱","總車柱數","可借車數","可還位數","經度","緯度"]
+
+# 月份檔（UTF-8）
+df_a = pd.read_csv("資料集/YouBike 一月資料.csv 的副本.csv")
+df_a["日期"] = pd.to_datetime(df_a["日期"], format="%Y/%m/%d %H:%M")
+
+# 黑客松檔（Big5，含秒 → 取整到 30 分鐘槽）
+df_b = pd.read_csv("資料集/新北AWS黑克松競賽0301-14.csv 的副本.csv", encoding="big5")
+df_b["日期"] = pd.to_datetime(df_b["日期"]).dt.floor("30min")
+
+# 建議：全部轉存 Parquet（DuckDB / pandas 都快很多，1 GB CSV → 約 100 MB）</pre>
+</div>
+
+<h3>更省事的方式：直接用整理好的 DuckDB</h3>
+<p class="note">本目錄的 <code>build_duckdb.py</code> 已把 12 個 CSV 整理成 <code>youbike.duckdb</code>（60 MB）：統一編碼與 30 分鐘時間槽、修復「?」站名與更名合併、行政區補值，含 <code>stations</code>（站點主檔）、<code>snapshots</code>（快照事實表）、<code>v_snapshots</code>（帶星期／空滿旗標／佔用率的分析視圖）。上述品質問題大多已在庫內處理完畢：</p>
+<div class="card">
+<pre class="mono" style="margin:0; overflow-x:auto; font-size:13px; line-height:1.6">import duckdb
+con = duckdb.connect("youbike.duckdb", read_only=True)
+con.sql("""
+    SELECT district, hour, round(100.0*sum(is_empty::INT)/count(*), 2) AS empty_pct
+    FROM v_snapshots
+    WHERE NOT always_empty AND is_weekend = false
+    GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 10
+""")</pre>
+</div>
+
+<footer>
+  統計數字由本機掃描全部 12 個 CSV 計算（2026-08-06）。命題背景與分析規劃見 <a href="分析規劃.html">分析規劃.html</a>。
+</footer>
+
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+(function () {
+  "use strict";
+  var css = getComputedStyle(document.documentElement);
+  function v(name) { return css.getPropertyValue(name).trim(); }
+  var NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  var tooltip = document.getElementById("tooltip");
+  function showTip(html, x, y) {
+    tooltip.innerHTML = html;
+    tooltip.style.display = "block";
+    var r = tooltip.getBoundingClientRect();
+    var left = Math.min(x + 14, window.innerWidth - r.width - 8);
+    var top = Math.min(y + 14, window.innerHeight - r.height - 8);
+    tooltip.style.left = left + "px";
+    tooltip.style.top = top + "px";
+  }
+  function hideTip() { tooltip.style.display = "none"; }
+  function swatchRow(color, label, val) {
+    return '<div class="t-row"><span class="swatch" style="background:' + color + '"></span>' + label + '：<b>' + val + '</b></div>';
+  }
+
+  // 主題切換（含 OS 深色模式）時以當前 token 重繪
+  function tokens() {
+    var c = getComputedStyle(document.documentElement);
+    return {
+      s1: c.getPropertyValue("--series-1").trim(),
+      s2: c.getPropertyValue("--series-2").trim(),
+      grid: c.getPropertyValue("--grid").trim(),
+      baseline: c.getPropertyValue("--baseline").trim(),
+      muted: c.getPropertyValue("--muted").trim(),
+      text: c.getPropertyValue("--text-primary").trim(),
+      text2: c.getPropertyValue("--text-secondary").trim(),
+      surface: c.getPropertyValue("--surface-1").trim()
+    };
+  }
+
+  // ---------- 資料 ----------
+  var months = ["1月", "2月", "3月", "4月", "5月", "6月"];
+  var mEmpty = [5.24, 4.81, 6.00, 5.90, 6.29, 5.66];
+  var mFull  = [1.98, 1.97, 1.86, 1.89, 1.92, 1.95];
+
+  var hEmpty = [7.02,5.27,4.13,4.11,4.05,4.02,2.23,4.45,6.74,6.92,5.93,5.00,5.09,5.09,4.90,4.55,5.00,5.58,7.43,7.18,7.20,7.50,8.50,7.93];
+  var hFull  = [3.13,2.98,2.92,2.92,2.87,2.80,0.63,0.88,0.90,0.77,0.69,0.66,0.74,0.84,0.87,0.77,0.97,1.25,3.52,3.18,3.07,2.97,3.23,3.29];
+
+  var districts = [
+    ["板橋區",222],["新莊區",138],["三重區",137],["新店區",125],["中和區",116],
+    ["土城區",101],["林口區",94],["淡水區",87],["汐止區",81],["三峽區",77],
+    ["樹林區",76],["鶯歌區",59],["蘆洲區",56],["永和區",55],["五股區",32],
+    ["八里區",31],["泰山區",26],["瑞芳區",9],["三芝區",9],["金山區",7],
+    ["萬里區",7],["深坑區",6],["石門區",5],["平溪區",5],["坪林區",4],
+    ["石碇區",4],["貢寮區",3],["雙溪區",2],["烏來區",2]
+  ];
+
+  // 柱頂 4px 圓角、底部直角的 path
+  function barPath(x, yTop, w, yBase) {
+    var r = Math.min(4, w / 2, Math.max(0, yBase - yTop));
+    return "M" + x + "," + yBase +
+           " L" + x + "," + (yTop + r) +
+           " Q" + x + "," + yTop + " " + (x + r) + "," + yTop +
+           " L" + (x + w - r) + "," + yTop +
+           " Q" + (x + w) + "," + yTop + " " + (x + w) + "," + (yTop + r) +
+           " L" + (x + w) + "," + yBase + " Z";
+  }
+
+  // ---------- 圖 1：月別群組柱狀 ----------
+  function drawMonthly() {
+    var t = tokens();
+    var host = document.getElementById("chart-monthly");
+    host.innerHTML = "";
+    var W = 680, H = 280, mL = 40, mR = 12, mT = 14, mB = 34;
+    var pw = W - mL - mR, ph = H - mT - mB, yMax = 7;
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
+      "aria-label": "月別空車率與滿位率群組柱狀圖，數值見下方表格" }, host);
+    function Y(val) { return mT + ph * (1 - val / yMax); }
+    [0, 2, 4, 6].forEach(function (g) {
+      el("line", { x1: mL, x2: W - mR, y1: Y(g), y2: Y(g), stroke: g === 0 ? t.baseline : t.grid, "stroke-width": 1 }, svg);
+      el("text", { x: mL - 8, y: Y(g) + 4, "text-anchor": "end", "font-size": 11, fill: t.muted }, svg).textContent = g + "%";
+    });
+    var band = pw / months.length, bw = 20, gap = 2;
+    months.forEach(function (m, i) {
+      var cx = mL + band * i + band / 2;
+      var x1 = cx - bw - gap / 2, x2 = cx + gap / 2;
+      el("path", { d: barPath(x1, Y(mEmpty[i]), bw, Y(0)), fill: t.s1 }, svg);
+      el("path", { d: barPath(x2, Y(mFull[i]), bw, Y(0)), fill: t.s2 }, svg);
+      el("text", { x: cx, y: H - 10, "text-anchor": "middle", "font-size": 12, fill: t.text2 }, svg).textContent = m;
+      if (i === 4) { // 直接標示極值：5 月空車率最高
+        el("text", { x: x1 + bw / 2, y: Y(mEmpty[i]) - 6, "text-anchor": "middle", "font-size": 11.5, "font-weight": 600, fill: t.text }, svg).textContent = "6.3%";
+      }
+      var hit = el("rect", { x: mL + band * i, y: mT, width: band, height: ph, fill: "transparent" }, svg);
+      hit.addEventListener("mousemove", function (e) {
+        showTip('<div class="t-title">2026 年 ' + m + "</div>" +
+          swatchRow(t.s1, "空車率", mEmpty[i].toFixed(2) + "%") +
+          swatchRow(t.s2, "滿位率", mFull[i].toFixed(2) + "%"), e.clientX, e.clientY);
+      });
+      hit.addEventListener("mouseleave", hideTip);
+    });
+  }
+
+  // ---------- 圖 2：逐時折線（十字游標） ----------
+  function drawHourly() {
+    var t = tokens();
+    var host = document.getElementById("chart-hourly");
+    host.innerHTML = "";
+    var W = 680, H = 300, mL = 40, mR = 96, mT = 16, mB = 34;
+    var pw = W - mL - mR, ph = H - mT - mB, yMax = 9;
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
+      "aria-label": "六月逐時空車率與滿位率折線圖，數值見下方表格" }, host);
+    function X(h) { return mL + pw * h / 23; }
+    function Y(val) { return mT + ph * (1 - val / yMax); }
+    [0, 3, 6, 9].forEach(function (g) {
+      el("line", { x1: mL, x2: mL + pw, y1: Y(g), y2: Y(g), stroke: g === 0 ? t.baseline : t.grid, "stroke-width": 1 }, svg);
+      el("text", { x: mL - 8, y: Y(g) + 4, "text-anchor": "end", "font-size": 11, fill: t.muted }, svg).textContent = g + "%";
+    });
+    [0, 6, 12, 18, 23].forEach(function (h) {
+      el("text", { x: X(h), y: H - 10, "text-anchor": "middle", "font-size": 11, fill: t.muted }, svg).textContent = (h < 10 ? "0" : "") + h + "時";
+    });
+    function poly(data) { return data.map(function (val, h) { return X(h) + "," + Y(val); }).join(" "); }
+    el("polyline", { points: poly(hEmpty), fill: "none", stroke: t.s1, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+    el("polyline", { points: poly(hFull), fill: "none", stroke: t.s2, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+    // 極值標記（8px 標點＋2px 表面環）與精選標籤
+    [[6, hEmpty[6], "06時 最低 2.2%", -14], [22, hEmpty[22], "22時 最高 8.5%", -10]].forEach(function (a) {
+      el("circle", { cx: X(a[0]), cy: Y(a[1]), r: 4, fill: t.s1, stroke: t.surface, "stroke-width": 2 }, svg);
+      el("text", { x: X(a[0]) + (a[0] === 6 ? 6 : 0), y: Y(a[1]) + a[3], "text-anchor": a[0] === 22 ? "end" : "start", "font-size": 11.5, "font-weight": 600, fill: t.text }, svg).textContent = a[2];
+    });
+    el("circle", { cx: X(23), cy: Y(hEmpty[23]), r: 4, fill: t.s1, stroke: t.surface, "stroke-width": 2 }, svg);
+    el("circle", { cx: X(23), cy: Y(hFull[23]), r: 4, fill: t.s2, stroke: t.surface, "stroke-width": 2 }, svg);
+    el("text", { x: X(23) + 8, y: Y(hEmpty[23]) + 4, "font-size": 11.5, fill: t.text2 }, svg).textContent = "無車可借 7.9%";
+    el("text", { x: X(23) + 8, y: Y(hFull[23]) + 4, "font-size": 11.5, fill: t.text2 }, svg).textContent = "無位可還 3.3%";
+    // 十字游標＋tooltip
+    var cross = el("g", { style: "display:none" }, svg);
+    var vline = el("line", { y1: mT, y2: mT + ph, stroke: t.baseline, "stroke-width": 1 }, cross);
+    var d1 = el("circle", { r: 4, fill: t.s1, stroke: t.surface, "stroke-width": 2 }, cross);
+    var d2 = el("circle", { r: 4, fill: t.s2, stroke: t.surface, "stroke-width": 2 }, cross);
+    var hit = el("rect", { x: mL, y: mT, width: pw, height: ph, fill: "transparent" }, svg);
+    hit.addEventListener("mousemove", function (e) {
+      var pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+      var p = pt.matrixTransform(svg.getScreenCTM().inverse());
+      var h = Math.max(0, Math.min(23, Math.round((p.x - mL) / pw * 23)));
+      cross.style.display = "";
+      vline.setAttribute("x1", X(h)); vline.setAttribute("x2", X(h));
+      d1.setAttribute("cx", X(h)); d1.setAttribute("cy", Y(hEmpty[h]));
+      d2.setAttribute("cx", X(h)); d2.setAttribute("cy", Y(hFull[h]));
+      showTip('<div class="t-title">6 月・' + (h < 10 ? "0" : "") + h + ":00</div>" +
+        swatchRow(t.s1, "空車率", hEmpty[h].toFixed(2) + "%") +
+        swatchRow(t.s2, "滿位率", hFull[h].toFixed(2) + "%"), e.clientX, e.clientY);
+    });
+    hit.addEventListener("mouseleave", function () { cross.style.display = "none"; hideTip(); });
+  }
+
+  // ---------- 圖 3：各區站數橫條 ----------
+  function drawDistrict() {
+    var t = tokens();
+    var host = document.getElementById("chart-district");
+    host.innerHTML = "";
+    var row = 24, mL = 74, mR = 46, mT = 8, mB = 26;
+    var W = 680, H = mT + districts.length * row + mB, pw = W - mL - mR, xMax = 240;
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
+      "aria-label": "各行政區站點數橫條圖，數值見下方表格" }, host);
+    svg.style.maxWidth = "760px";
+    function X(val) { return mL + pw * val / xMax; }
+    [0, 60, 120, 180, 240].forEach(function (g) {
+      el("line", { x1: X(g), x2: X(g), y1: mT, y2: mT + districts.length * row, stroke: g === 0 ? t.baseline : t.grid, "stroke-width": 1 }, svg);
+      el("text", { x: X(g), y: H - 8, "text-anchor": "middle", "font-size": 11, fill: t.muted }, svg).textContent = g;
+    });
+    districts.forEach(function (d, i) {
+      var y = mT + i * row, bh = 14, yTop = y + (row - bh) / 2;
+      var r = Math.min(4, X(d[1]) - X(0));
+      el("path", { d: "M" + X(0) + "," + yTop +
+        " L" + (X(d[1]) - r) + "," + yTop +
+        " Q" + X(d[1]) + "," + yTop + " " + X(d[1]) + "," + (yTop + r) +
+        " L" + X(d[1]) + "," + (yTop + bh - r) +
+        " Q" + X(d[1]) + "," + (yTop + bh) + " " + (X(d[1]) - r) + "," + (yTop + bh) +
+        " L" + X(0) + "," + (yTop + bh) + " Z", fill: t.s1 }, svg);
+      el("text", { x: mL - 8, y: y + row / 2 + 4, "text-anchor": "end", "font-size": 12, fill: t.text2 }, svg).textContent = d[0];
+      el("text", { x: X(d[1]) + 6, y: y + row / 2 + 4, "font-size": 11.5, fill: t.muted, "font-variant-numeric": "tabular-nums" }, svg).textContent = d[1];
+      var hit = el("rect", { x: 0, y: y, width: W, height: row, fill: "transparent" }, svg);
+      hit.addEventListener("mouseenter", function () { hit.setAttribute("fill", t.grid); hit.setAttribute("opacity", "0.35"); });
+      hit.addEventListener("mouseleave", function () { hit.setAttribute("fill", "transparent"); hit.removeAttribute("opacity"); });
+    });
+  }
+
+  // ---------- 表格檢視 ----------
+  function buildHourlyTable() {
+    var rows = hEmpty.map(function (val, h) {
+      return "<tr><td>" + (h < 10 ? "0" : "") + h + ":00</td><td class='num'>" + val.toFixed(2) + "%</td><td class='num'>" + hFull[h].toFixed(2) + "%</td></tr>";
+    }).join("");
+    document.getElementById("table-hourly").innerHTML =
+      "<table><thead><tr><th>時段</th><th class='num'>空車率</th><th class='num'>滿位率</th></tr></thead><tbody>" + rows + "</tbody></table>";
+  }
+  function buildDistrictTable() {
+    var rows = districts.map(function (d) {
+      return "<tr><td>" + d[0] + "</td><td class='num'>" + d[1] + "</td></tr>";
+    }).join("");
+    document.getElementById("table-district").innerHTML =
+      "<table><thead><tr><th>行政區</th><th class='num'>站點數（6 月）</th></tr></thead><tbody>" + rows + "</tbody></table>";
+  }
+
+  function drawAll() { drawMonthly(); drawHourly(); drawDistrict(); }
+  drawAll();
+  buildHourlyTable();
+  buildDistrictTable();
+  if (window.matchMedia) {
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawAll);
+  }
+})();
+</script>
+</body>
+</html>

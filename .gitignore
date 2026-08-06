@@ -1,0 +1,8 @@
+# 大型資料檔不進版控
+資料集/
+*.duckdb
+*.csv
+
+# Python
+__pycache__/
+*.pyc
