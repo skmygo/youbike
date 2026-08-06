@@ -3,11 +3,18 @@ import {
   Map as MapLibreMap,
   NavigationControl,
   Popup,
+  setWorkerUrl,
   type DataDrivenPropertyValueSpecification,
   type GeoJSONSource,
   type MapLayerMouseEvent,
 } from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
+// maplibre v6 用 new URL("./maplibre-gl-worker.mjs", import.meta.url) 找 worker，
+// 打包後那個相對檔案不存在（dev 能跑、production 一定 404）。改讓 Vite 把 worker
+// 當 asset 產出並明確指定路徑；worker 掛掉的話 GeoJSON source 永遠不會 ready。
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url"
+
+setWorkerUrl(maplibreWorkerUrl)
 
 import type { Station } from "@/lib/api"
 import { STATUS } from "@/lib/status"
