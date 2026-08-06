@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>YouBike 調度預警指揮台 — 簡報</title>
+<style>
+  :root {
+    --void: #0a0f1a; --panel: #121a2a; --panel2: #172034;
+    --line: #253148; --line-soft: #1b2537;
+    --ink: #e6edf8; --dim: #8493ac; --faint: #56637a;
+    --green: #21d0a5; --blue: #4c8dff; --red: #ff5c5c; --amber: #ffb020; --violet: #c084fc;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--void); color: var(--ink); overflow: hidden;
+    font-family: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .num { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .slide {
+    position: absolute; inset: 0; display: none;
+    flex-direction: column; justify-content: center;
+    padding: 5vh 7vw 9vh;
+  }
+  .slide.on { display: flex; }
+  .eyebrow {
+    font-size: clamp(11px, 1.1vw, 15px); letter-spacing: .18em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 1.2vh;
+  }
+  h1 { font-size: clamp(30px, 4.6vw, 62px); line-height: 1.15; font-weight: 650; letter-spacing: -.01em; }
+  h2 { font-size: clamp(22px, 2.9vw, 40px); line-height: 1.25; font-weight: 620; margin-bottom: 2.6vh; }
+  p, li, td, th { font-size: clamp(14px, 1.35vw, 21px); line-height: 1.65; color: var(--dim); }
+  strong { color: var(--ink); font-weight: 600; }
+  .lead { font-size: clamp(17px, 1.9vw, 28px); color: var(--dim); margin-top: 2.4vh; max-width: 46ch; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 2vw; margin-top: 1vh; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2.2vh 1.6vw; }
+  .card h3 { font-size: clamp(15px, 1.5vw, 22px); color: var(--ink); font-weight: 600; margin-bottom: 1vh; }
+  .big { font-family: ui-monospace, monospace; font-size: clamp(30px, 4.2vw, 58px); line-height: 1; font-weight: 600; }
+  .sub { font-size: clamp(12px, 1.05vw, 16px); color: var(--faint); margin-top: 1vh; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1vh; }
+  th { text-align: left; color: var(--faint); font-weight: 400; font-size: clamp(11px, 1.05vw, 15px);
+       letter-spacing: .1em; text-transform: uppercase; padding: 1vh .8vw; border-bottom: 1px solid var(--line); }
+  td { padding: 1.15vh .8vw; border-bottom: 1px solid var(--line-soft); }
+  td.r, th.r { text-align: right; }
+  ul { list-style: none; }
+  li { padding-left: 1.5em; position: relative; margin-bottom: 1.1vh; }
+  li::before { content: "—"; position: absolute; left: 0; color: var(--faint); }
+  .win { color: var(--green); } .warn { color: var(--amber); } .bad { color: var(--red); }
+  .vio { color: var(--violet); } .blu { color: var(--blue); }
+  .note { margin-top: 2.4vh; padding: 1.8vh 1.6vw; background: var(--panel);
+          border-left: 2px solid var(--violet); border-radius: 0 6px 6px 0; }
+  footer {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 6vh;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 7vw; border-top: 1px solid var(--line-soft);
+    font-size: clamp(10px, .95vw, 14px); color: var(--faint);
+  }
+  footer .brand { color: var(--dim); }
+  footer .brand b { color: var(--green); font-weight: 600; }
+  .bar { position: fixed; left: 0; top: 0; height: 2px; background: var(--violet); transition: width .25s; }
+  kbd { border: 1px solid var(--line); border-radius: 3px; padding: .1em .45em; color: var(--dim);
+        font-family: ui-monospace, monospace; font-size: .9em; }
+</style>
+</head>
+<body>
+<div class="bar" id="bar"></div>
+
+<section class="slide on">
+  <p class="eyebrow">新北市政府 AI 黑客松 · 交通局命題</p>
+  <h1>YouBike 調度預警指揮台</h1>
+  <p class="lead">
+    把「事後才知道站空了」變成<br />
+    <strong>兩小時前就知道，而且知道車該從哪裡搬過來</strong>。
+  </p>
+  <p class="lead num" style="font-size: clamp(13px,1.3vw,19px); color: var(--faint);">
+    youbike.itsmygo.uk　·　六個月 1,324 萬筆快照　·　1,567 站　·　全自動排程上線中
+  </p>
+</section>
+
+<section class="slide">
+  <p class="eyebrow">問題</p>
+  <h2>命題點出三個痛點，我們一項一項對</h2>
+  <table>
+    <thead><tr><th>痛點</th><th>現況</th><th>我們做了什麼</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>看得到現況、看不到趨勢</strong></td>
+        <td>官方 App 只有此刻數字</td>
+        <td class="win">六個月可回放 ＋ 全市空滿脈搏帶 ＋ 預測帶</td>
+      </tr>
+      <tr>
+        <td><strong>系統不會主動通知機關</strong></td>
+        <td>靠民眾反映、靠巡查</td>
+        <td class="win">四級警示（第四級是預測型）＋ webhook 主動推播</td>
+      </tr>
+      <tr>
+        <td><strong>調度靠經驗、缺決策依據</strong></td>
+        <td>老手經驗，換人就斷</td>
+        <td class="win">每 30 分鐘產生一張可執行的調度任務清單</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="slide">
+  <p class="eyebrow">Demo 動線</p>
+  <h2>三分鐘看完整條路</h2>
+  <ul>
+    <li><strong>首頁</strong>：此刻全市誰在壞 → 地圖紅點群聚三重、板橋；底部脈搏帶把今天疊在<span class="vio">同星期幾的歷史常態</span>上，高於常態就是今天特別糟</li>
+    <li><strong>未來一小時</strong>：模型說幾站可能無車、幾站可能滿位——這是現況面板給不出的資訊</li>
+    <li><strong>調度建議頁</strong>：直接給任務單「這站缺 11 台，從 1.5 km 外那站收 3 台」；配不到鄰近滿位站的<span class="warn">明白標示需由調度中心出車</span>，不假裝有解</li>
+    <li><strong>警示頁切「預測」</strong>：同一批站，規則型要等它空了才亮燈，模型平均<span class="win">提前 147 分鐘</span>點名</li>
+    <li><strong>預測模型頁</strong>：把好與壞一次講完</li>
+    <li><strong>歷史回放</strong>：拉到 6 月某個早上八點，看尖峰怎麼從板橋擴散出去</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="eyebrow">模型 · 6 月測試集（訓練與驗證全程沒碰過）</p>
+  <h2>水位預測：時距越長，模型優勢越大</h2>
+  <table>
+    <thead><tr><th>時距</th><th class="r">LightGBM</th><th class="r">現況延續</th><th class="r">上週同時段</th><th class="r">勝現況延續</th></tr></thead>
+    <tbody>
+      <tr><td>30 分後</td><td class="r num">1.442</td><td class="r num">1.466</td><td class="r num" style="color:var(--faint)">5.538</td><td class="r num win">+1.6%</td></tr>
+      <tr><td>60 分後</td><td class="r num">2.052</td><td class="r num">2.213</td><td class="r num" style="color:var(--faint)">5.539</td><td class="r num win">+7.3%</td></tr>
+      <tr><td>120 分後</td><td class="r num">2.746</td><td class="r num">3.229</td><td class="r num" style="color:var(--faint)">5.539</td><td class="r num win">+15.0%</td></tr>
+      <tr><td>180 分後</td><td class="r num">3.154</td><td class="r num">3.992</td><td class="r num" style="color:var(--faint)">5.539</td><td class="r num win">+21.0%</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    <p>短時距現況延續本來就很強，模型只小勝 1.6%；<strong>時距拉長優勢才展開</strong>——
+    而那正是調度真正需要的區間，因為<strong>派車出去本身就要時間</strong>。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="eyebrow">事件級預警</p>
+  <h2>真的能提前多久告訴你</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>空車事件偵測率</h3>
+      <p class="big win">68.1%</p>
+      <p class="sub">6 月共 35,450 起　·　規則型：0%（事發後才知道）</p>
+    </div>
+    <div class="card">
+      <h3>平均提前預警</h3>
+      <p class="big warn">147 分</p>
+      <p class="sub">規則型恆為 0 分——這段時間差就是模型的價值</p>
+    </div>
+    <div class="card">
+      <h3>誤報率</h3>
+      <p class="big bad">52.2%</p>
+      <p class="sub">高偵測率的代價；所以調度頁按風險排序取前 N，不是把所有警報丟出來</p>
+    </div>
+  </div>
+  <div class="note">
+    <p>規劃書寫的 70% 是高信心門檻（誤報率降到 17.5%），但偵測率只剩 <strong>6.5%</strong>——來不及派車。
+    系統<strong>兩套門檻並存</strong>，報告兩組數字都列，讓調度單位自己決定要多敏感。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="eyebrow">KPI1 · 照建議調度，6 月能少掉多少無車時間（模擬）</p>
+  <h2>調度不是一個排序，是兩個佇列</h2>
+  <table>
+    <thead><tr><th>每 30 分可處理</th><th class="r">純預防</th><th class="r">純補救（＝規則型）</th><th class="r">一半一半</th><th class="r">勝規則型</th><th class="r">新事件可預防</th></tr></thead>
+    <tbody>
+      <tr><td class="num">10 站</td><td class="r num">9.8%</td><td class="r num">8.4%</td><td class="r num win">9.9%</td><td class="r num win">+1.5pp</td><td class="r num vio">4.4%</td></tr>
+      <tr><td class="num">20 站</td><td class="r num">16.7%</td><td class="r num">15.9%</td><td class="r num win">18.2%</td><td class="r num win">+2.3pp</td><td class="r num vio">8.5%</td></tr>
+      <tr><td class="num">40 站</td><td class="r num">27.0%</td><td class="r num">27.8%</td><td class="r num win">32.1%</td><td class="r num win">+4.3pp</td><td class="r num vio">14.8%</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    <p>已經空掉的站預測機率永遠是 <span class="num">0.99+</span>，混在一起排會把預防名額整個吃光。
+    <strong>把量能拆成一半預防、一半補救</strong>，同樣的車、同樣的人，多消除 4.3 個百分點的無車時間。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="eyebrow">模擬時發現的一件事</p>
+  <h2>有些站不是調度問題，是配置問題</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>最常空的 5% 站</h3>
+      <p class="big bad">20.5%</p>
+      <p class="sub">76 個站就佔掉全市五分之一的無車時間</p>
+    </div>
+    <div class="card">
+      <h3>超過一半時間沒車的站</h3>
+      <p class="big bad">13 站</p>
+      <p class="sub">調度車追一整天也追不回來</p>
+    </div>
+    <div class="card">
+      <h3>動態調度真正能改變的</h3>
+      <p class="big vio">35,450</p>
+      <p class="sub">起「新發生」的空車事件——力氣該花在這裡</p>
+    </div>
+  </div>
+  <div class="note">
+    <p>給新北市的具體建議：<strong>這 13 站該加車柱或提高基準配車量，不該再叫調度車去追</strong>。
+    這是我們這次分析覺得最有價值的產出——它不在命題的要求裡，是資料自己講出來的。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="eyebrow">預測區間</p>
+  <h2>給的是區間，不是一個假裝很準的數字</h2>
+  <table>
+    <thead><tr><th>時距</th><th class="r">實測覆蓋率</th><th class="r">目標</th><th class="r">平均帶寬</th></tr></thead>
+    <tbody>
+      <tr><td>30 分後</td><td class="r num">76.2%</td><td class="r num" style="color:var(--faint)">80%</td><td class="r num">4.8 台</td></tr>
+      <tr><td>60 分後</td><td class="r num">76.6%</td><td class="r num" style="color:var(--faint)">80%</td><td class="r num">7.0 台</td></tr>
+      <tr><td>120 分後</td><td class="r num">77.2%</td><td class="r num" style="color:var(--faint)">80%</td><td class="r num">9.3 台</td></tr>
+      <tr><td>180 分後</td><td class="r num">77.6%</td><td class="r num" style="color:var(--faint)">80%</td><td class="r num">10.7 台</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    <p><strong>時距越長區間越寬，這正是模型該有的誠實。</strong>
+    調度員看到窄帶可以放心派車，看到寬帶就知道要再等等。</p>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="eyebrow">誠實的部分</p>
+  <h2>這些我們沒做到，或做不到</h2>
+  <ul>
+    <li><strong>誤報率 52%</strong>：營運門檻照「F1 最佳」選，高偵測率的代價就是誤報多</li>
+    <li><strong>滿位事件比較難預測</strong>（偵測率 51%）：事件本身少，3,909 起 vs 35,450 起，樣本不平衡</li>
+    <li><strong>沒有天氣</strong>：手上沒有中央氣象署 API key，就算爬到歷史觀測，<span class="warn">線上推論時也拿不到即時值與預報</span>——做出來是個永遠 degraded 的特徵，所以誠實地不做</li>
+    <li><strong>假日是資料驅動偵測的</strong>（抓到 18 個平日假期，含春節連假），不是官方行事曆，補班日還沒分出來</li>
+    <li><strong>線上預測正在暖機</strong>：即時快照這次才開始累積，不足 7 天的 lag 用「同站、同星期幾、同時段的上一次實際觀測」橋接，介面上誠實顯示即時資料佔比</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="eyebrow">工程</p>
+  <h2>它現在就在跑，不是一個 demo</h2>
+  <ul>
+    <li><strong>全自動</strong>：Dagster 每 10 分鐘爬取 → 物化服務層 → 重算警示 → 推播新升級的站；每 30 分鐘跑一次線上推論。全程無人</li>
+    <li><strong>推論不進 API 請求路徑</strong>：模型結果由排程算好寫 parquet，API 只讀檔——首頁不會因為模型變慢</li>
+    <li><strong>線上特徵與訓練逐欄對齊</strong>：同一套 window SQL，杜絕 training/serving skew</li>
+    <li><strong>資源紀律</strong>：訓練機同時是正式服務主機，重活一律戴 <span class="num">systemd-run</span> 資源罩（4G／400%）；半夜真的被 OOM 殺過一次，做法是<span class="warn">縮規模而不是調大上限</span>，抽樣 35%→22%、峰值壓到 1.88G</li>
+    <li><strong>全部可重現</strong>：20 個模型逐一進 MLflow，回測報告與 KPI 模擬隨模型一起版本化上 S3</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <p class="eyebrow">可落地性</p>
+  <h2>接下來要做什麼</h2>
+  <div class="cols">
+    <div class="card">
+      <h3 class="win">已經在線上</h3>
+      <p>公開網址、每 10 分鐘的排程、CF Access 保護的 Dagster 後台，都是真的在跑，不是本機 demo。</p>
+    </div>
+    <div class="card">
+      <h3 class="blu">換城市很便宜</h3>
+      <p>對資料源的介面只有五欄：<span class="num">station_id / ts / bikes / docks_avail / docks_total</span>。</p>
+    </div>
+    <div class="card">
+      <h3 class="vio">調度單位真正需要的下一步</h3>
+      <p>接天氣與活動行事曆、把任務單接進現有派工系統、把那 13 個結構性缺車站的配置重新算過。</p>
+    </div>
+  </div>
+  <p class="lead num" style="font-size: clamp(14px,1.4vw,20px);">youbike.itsmygo.uk</p>
+</section>
+
+<footer>
+  <span class="brand"><b>YouBike</b> 調度預警指揮台</span>
+  <span><kbd>←</kbd> <kbd>→</kbd> 或點畫面切換　·　<span class="num" id="pageno">1 / 11</span></span>
+</footer>
+
+<script>
+  const slides = [...document.querySelectorAll('.slide')]
+  const bar = document.getElementById('bar')
+  const pageno = document.getElementById('pageno')
+  let i = 0
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n))
+    slides.forEach((s, k) => s.classList.toggle('on', k === i))
+    bar.style.width = ((i + 1) / slides.length * 100) + '%'
+    pageno.textContent = (i + 1) + ' / ' + slides.length
+    location.hash = i + 1
+  }
+  addEventListener('keydown', e => {
+    if (['ArrowRight', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); show(i + 1) }
+    else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); show(i - 1) }
+    else if (e.key === 'Home') show(0)
+    else if (e.key === 'End') show(slides.length - 1)
+  })
+  addEventListener('click', e => show(e.clientX < innerWidth * 0.25 ? i - 1 : i + 1))
+  show(Math.max(0, (parseInt(location.hash.slice(1), 10) || 1) - 1))
+</script>
+</body>
+</html>

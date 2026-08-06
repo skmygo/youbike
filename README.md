@@ -4,7 +4,7 @@
 接上每 10 分鐘的即時爬取，再用 LightGBM 預測未來 30／60／120／180 分鐘的站點水位與空滿風險，
 最後輸出一張「車該從哪裡搬到哪裡」的調度清單。
 
-**線上展示**：<https://youbike.itsmygo.uk>
+**線上展示**：<https://youbike.itsmygo.uk>　·　**簡報**：<https://youbike.itsmygo.uk/slides.html>（方向鍵翻頁）
 
 | 頁面 | 回答的問題 |
 |---|---|
