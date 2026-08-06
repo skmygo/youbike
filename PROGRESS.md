@@ -4,8 +4,9 @@
 
 ## 狀態塊
 
-- **當前 milestone**：M3（前端主體）— M0/M1/M2 已完成
-- **公開網址**：`https://youbike.itsmygo.uk` — ✅ 上線（API 全通 + 即時資料，前端仍是 scaffold 佔位頁）
+- **當前 milestone**：M4（ML：特徵庫 + baseline + LightGBM + MLflow + 6 月回測）— M0–M3 已完成
+- **公開網址**：`https://youbike.itsmygo.uk` — ✅ 五頁全上線（即時指揮／回放／警示／區域分析／關於），
+  已用本機 headless Chrome 對公開網址實測通過
 - **Dagster**：✅ `https://youbike-dagster.itsmygo.uk`（CF Access 336h），schedule `realtime_every_10min` RUNNING，23:30 首次準時觸發
 - **MLflow experiment**：❌ 尚未建立（目標：`youbike-hackathon` @ http://192.168.50.190:5000）
 - **GitHub repo**：✅ `skmygo/youbike`（public，main）
@@ -25,6 +26,9 @@
 | 本機跑 dagster | `YOUBIKE_DATA_DIR=$PWD/_out DAGSTER_HOME=$PWD/_out/dagster .venv/bin/dagster job execute -m pipeline.defs -j realtime_refresh` |
 | CF Access app | `youbike-dagster` id `cd42824a-cf26-48c2-9e14-2dfb4d738291`（allow kuan9924501@gmail.com，336h） |
 | station_id | 以**站名**為 key（build_duckdb.py 的流水號）；即時爬蟲用站名對回，新站配號 ≥900000 |
+| 前端驗證 | Claude-in-Chrome 那台（遠端 Windows）**載不動 maplibre worker**（請求恆 pending），不是網站問題。
+  UI 驗證改用本機：`cd /tmp/pw && node shot.mjs <url> <out.png> [ms]`（截圖+console）、`node probe4.mjs <url>`（網路/worker） |
+| 本機容器驗證 | `docker run -d --name yb-prod -p 18010:8000 -v $PWD/_out:/data youbike:test` — **前端改動一定要用容器驗過再部署**（dev 正常≠production 正常） |
 
 ## 已完成
 
@@ -41,10 +45,16 @@
 - [x] **M2** Dagster 排程上線：`realtime_snapshot` → `station_registry` → `serving_snapshots` → `alerts_table`，
   每 10 分鐘（Asia/Taipei）；UI `youbike-dagster.itsmygo.uk` + CF Access；23:30 首次自動執行成功，
   API 已改讀 pipeline 物化的 `alerts.parquet`（306 筆）
+- [x] **M3** 前端主體五頁上線（設計方向：夜間調度指揮台，深靛藍面板＋狀態燈號＋等寬數字）：
+  - `/` 即時指揮：KPI ×4 + 待處理站點清單 + MapLibre 地圖（1,577 站狀態燈號）+ 站點抽屜（7 天曲線）
+  - `/replay` 歷史回放：日期選擇 + 時間軸拉桿 + 播放一天 + 脈搏帶點選跳轉
+  - `/alerts` 警示：三級 + 行政區篩選 + 完整表格
+  - `/districts` 區域分析：行政區彙總 + 星期×半小時無車熱力圖 + 最常無車站排行
+  - `/about` 關於：三痛點對三模組 + 資料涵蓋 + 做法
+  - signature：**全市空滿脈搏帶**（48 槽，無車向上、無位向下，疊同星期幾的歷史常態虛線）
 
 ## 待辦（照 MISSION.md milestone 表）
 
-- [ ] **M3** 前端主體（地圖／站點詳情／回放／警示面板／行政區彙總）
 - [ ] **M4** 特徵庫 + baseline×2 + LightGBM + MLflow + 6 月回測 report.json
 - [ ] **M5** 預測資產 + forecast API + 預測型警示 + 調度建議
 - [ ] **M6** KPI hero + /model 頁 + README + 簡報大綱
@@ -68,3 +78,9 @@
 - 2026-08-06 23:03 — **M1 完成**（提前 67 分）：9 個 API 全通，公開網址實測 <1 秒回應
 - 2026-08-06 23:31 — **M2 完成**（提前 99 分）：Dagster 四資產上線，23:30 schedule 準時觸發，
   即時快照進服務層；修掉 dagster context 型別註解、SSL 憑證、離線站誤判三個問題
+- 2026-08-07 00:18 — **M3 完成**（提前 172 分）：前端五頁上線。地圖不渲染的根因挖了四層：
+  ① maplibre v6 worker 是 ESM、Vite 打成 iife → worker 掛掉，GeoJSON source 永遠不 ready
+  ② CARTO @2x tiles 讓 style 卡住 → 底圖全黑、load 事件不觸發
+  ③ 站點資料早於地圖 load 抵達 → addSource 拿到空集合
+  ④ worker 的相依 maplibre-gl-shared.mjs 沒被打包 → **只有 production 壞，dev 正常**
+  另新增 /api/stats/pulse（今日 + 同星期幾歷史常態）
