@@ -4,7 +4,9 @@
 
 ## 狀態塊
 
-- **當前 milestone**：M4（ML：特徵庫 + baseline + LightGBM + MLflow + 6 月回測）— 新基準 00:15–02:15
+- **當前 milestone**：M4 進行中（ml/config・features・train・evaluate 四檔已寫）— 二次基準 00:55–02:45；
+  ⚠️ 00:45 首跑沒設資源上限把機器吃掛（swap 3.9/4G 灌滿、同機 Dokploy 重啟）→ 已訂 CLAUDE.md 資源鐵律 7–9，
+  程式碼配額已調安全（train num_threads 8→3、features DuckDB 6GB/6t→3GB/3t），重跑必戴 systemd-run 資源罩
 - **公開網址**：`https://youbike.itsmygo.uk` — ✅ 五頁全上線（即時指揮／回放／警示／區域分析／關於）；
   00:15 health/meta 正常，dagster 最新快照 00:10 落地
 - **Dagster**：✅ `https://youbike-dagster.itsmygo.uk`（CF Access 336h），schedule `realtime_every_10min` RUNNING
@@ -26,6 +28,7 @@
 | 本機 venv | `.venv`（Python 3.14，dagster 1.13.16 / lightgbm 4.7.0 / mlflow 3.15.1 / duckdb 1.5.5），已含 pipeline+ml extras |
 | 本機跑 dagster | `YOUBIKE_DATA_DIR=$PWD/_out DAGSTER_HOME=$PWD/_out/dagster .venv/bin/dagster job execute -m pipeline.defs -j realtime_refresh` |
 | MLflow | `MLFLOW_TRACKING_URI=http://192.168.50.190:5000`，experiment `youbike-hackathon`（00:20 ping 200） |
+| 資源罩（重活必用） | `systemd-run --user --scope -p MemoryMax=4G -p CPUQuota=400% nice -n 19 <cmd>`；本機=**.217 production 主機**（8 核/14GB，常駐已吃 ~8G），詳 CLAUDE.md 鐵律 7–9 |
 | CF Access app | `youbike-dagster` id `cd42824a-cf26-48c2-9e14-2dfb4d738291`（allow kuan9924501@gmail.com，336h） |
 | station_id | 以**站名**為 key（build_duckdb.py 的流水號）；即時爬蟲用站名對回，新站配號 ≥900000 |
 | 前端驗證 | Claude-in-Chrome 那台（遠端 Windows）**載不動 maplibre worker**（請求恆 pending），不是網站問題。
@@ -57,11 +60,12 @@
 
 ## 待辦（照 MISSION.md §3 基準表，00:15 重排）
 
-- [ ] **M4**（00:15–02:15）特徵庫 + baseline×2 + LightGBM（30/60/120/180 分，回歸+分類）+ MLflow + 6 月回測 report.json + 模型上 S3
-  - 起手：`ml/` 目前僅 `__init__.py` 從零寫；歷史 parquet 在 `_out/history/`；`MLFLOW_TRACKING_URI=http://192.168.50.190:5000`；訓練丟 run_in_background
-- [ ] **M5**（02:15–03:45）dagster predictions(*/30) + forecast API + 前端預測帶 + 預測型警示 + 調度建議清單 + UI 頁
-- [ ] **M6**（03:45–05:15）KPI hero（回測數字 + KPI1 模擬調度改善）+ /model 頁 + README + 簡報大綱.md
-- [ ] **S**（05:15–07:45）加分梯隊 S1–S5（MISSION §3.5，一次一項）→ 守夜模式（§3.6）
+- [ ] **M4**（00:55–02:45）特徵庫 + baseline×2 + LightGBM（30/60/120/180 分，回歸+分類）+ MLflow + 6 月回測 report.json + 模型上 S3
+  - 續作：ml/ 四檔已寫好、配額已調安全；跑 features → train → evaluate 全程資源罩 + run_in_background；
+    開跑前 `free -g` 確認 available ≥6G；歷史 parquet 在 `_out/history/`；`MLFLOW_TRACKING_URI=http://192.168.50.190:5000`
+- [ ] **M5**（02:45–04:15）dagster predictions(*/30) + forecast API + 前端預測帶 + 預測型警示 + 調度建議清單 + UI 頁
+- [ ] **M6**（04:15–05:45）KPI hero（回測數字 + KPI1 模擬調度改善）+ /model 頁 + README + 簡報大綱.md
+- [ ] **S**（05:45–07:45）加分梯隊 S1–S5（MISSION §3.5，一次一項）→ 守夜模式（§3.6）
 - [ ] **M7**（07:45–08:00）最終 push + 部署驗證 + SUMMARY.md → stop
 
 ## 資料事實（給後續 milestone 直接引用）
@@ -90,3 +94,6 @@
   另新增 /api/stats/pulse（今日 + 同星期幾歷史常態）
 - 2026-08-07 00:25 — 備戰重整（loop 重啟前，非 loop 輪）：§3 基準表重排（M4 自 00:15 起，超前時間轉加分梯隊 S1–S5 + 守夜模式）；
   新增 CLAUDE.md 每輪鐵律；健檢全綠：MLflow 200、.venv ml deps OK、/tmp/pw 腳本在、公開網址 health OK、dagster 00:10 新快照
+- 2026-08-07 00:58 — ⚠️ 資源事故復盤（非 loop 輪）：M4 首跑無上限把 8 核/14GB 吃滿，swap 灌滿 3.9/4G，**同機的 production
+  （Dokploy/Traefik/全部 *.itsmygo.uk）跟著遭殃，Dokploy 重啟過一次**。對策：CLAUDE.md 新增資源鐵律 7–9（systemd-run 罩
+  4G/400%/nice19、num_threads=3、DuckDB 3GB/3t、跑前 free -g）；train.py / features.py 配額已改；§3 二次基準（M4 至 02:45）

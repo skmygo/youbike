@@ -41,6 +41,8 @@
 - 公開路由   youbike.itsmygo.uk → Traefik（wildcard 已涵蓋，只需 Dokploy 建 domain）
 ```
 
+> ⚠️ **本機 = .217 production 主機本體**：上圖「本機」與「.217 Dokploy」是同一台 8 核 / 14GB 機器的兩個角色，所有 `*.itsmygo.uk` 服務都在上面。重活（訓練/特徵工程/docker build）必戴 CLAUDE.md 資源鐵律的資源罩；把機器吃滿 = production 全滅（00:45 已發生一次：swap 灌滿、Dokploy 被迫重啟）。
+
 **技術棧（定案，不換）**：
 - 前端：Vite + React + TypeScript + **TanStack Router + TanStack Query** + Tailwind CSS + shadcn/ui；地圖 **MapLibre GL JS**（底圖用 CARTO raster tiles，免 key，記得 attribution）；圖表 **ECharts**
 - API：**FastAPI** + uvicorn；查詢引擎 DuckDB（`:memory:` 連線查 parquet glob，**無檔案鎖問題**）
@@ -56,16 +58,16 @@
 5. **模型部署**：訓練在本機（資料在本機、CPU 快），model 檔 + `report.json` 上 S3，容器啟動腳本拉下來；線上預測由 dagster 排程算好寫 parquet，API 只讀結果（**不在請求路徑跑模型**）。
 6. **ML 切分紀律**：1–4 月訓練、5 月驗證、6 月測試，時間序不洗牌。Baseline（persistence + 上週同日同時段）必須先跑，LightGBM 贏不過就誠實分層呈現（規劃已寫明這反而加分）。
 
-## 3. Milestone 表（2026-08-07 00:15 重新基準；每輪對照，落後就啟動降級）
+## 3. Milestone 表（2026-08-07 00:55 二次基準——00:45 資源事故後重排；每輪對照，落後就啟動降級）
 
-M0–M3 ✅ 全部完成（超前約 3 小時，帳目見 PROGRESS.md）。**超前不提前收工**：多出來的時間轉投 §3.5 加分梯隊與 §3.6 守夜模式，loop 一路跑到 08:00。
+M0–M3 ✅ 全部完成；M4 進行中（`ml/` 四檔已寫好，首跑因沒設資源上限把機器吃掛，程式碼配額已調安全，重跑必戴資源罩）。**超前不提前收工**：多出來的時間轉投 §3.5 加分梯隊與 §3.6 守夜模式，loop 一路跑到 08:00。
 
 | # | 時段（預算） | 交付 | 驗收（可自動驗證） |
 |---|---|---|---|
-| M4 | 00:15–02:15 | 特徵庫（lag 30m–24h、rolling、時間、假日、站點分群 k-means、鄰近站聚合）；baseline ×2（persistence、上週同日同時段）；LightGBM 回歸+分類（30/60/120/180 分）；全程 MLflow；6 月回測 `report.json`；模型上 S3 | MLflow 有 runs；report.json 含 MAE + 事件 P/R/F1 + 平均提前分鐘數，baseline 對照齊全 |
-| M5 | 02:15–03:45 | dagster `predictions`(*/30) 資產；API `/api/stations/{id}/forecast` + 前端預測帶；預測型警示（60 分內空/滿機率 ≥70%）；調度建議（優先級 = 嚴重度×歷史需求×持續時間；1km 內餘裕站調車清單）+ UI 頁 | 公開網址可見預測帶、預測型警示、調度建議清單；dagster 排程有新產出 |
-| M6 | 03:45–05:15 | 首頁 KPI hero（回測數字 + 模擬「依預警提前調度」的空滿時數改善 = 命題 KPI1 回測）；`/model` 模型成效頁；README（架構圖 mermaid、KPI、demo 導覽）；`簡報大綱.md`；容器全頁走查 + RWD/深色 | 評審動線：進站 30 秒內看懂三痛點對應三模組；回測數字上網站 |
-| S | 05:15–07:45 | §3.5 加分梯隊由上往下做 + §3.6 守夜 | 每項獨立驗收 |
+| M4 | 00:55–02:45 | 特徵庫（lag 30m–24h、rolling、時間、假日、站點分群 k-means、鄰近站聚合）；baseline ×2（persistence、上週同日同時段）；LightGBM 回歸+分類（30/60/120/180 分）；全程 MLflow；6 月回測 `report.json`；模型上 S3。**全程資源罩（CLAUDE.md 鐵律 7–9）** | MLflow 有 runs；report.json 含 MAE + 事件 P/R/F1 + 平均提前分鐘數，baseline 對照齊全；全程機器沒掛 |
+| M5 | 02:45–04:15 | dagster `predictions`(*/30) 資產；API `/api/stations/{id}/forecast` + 前端預測帶；預測型警示（60 分內空/滿機率 ≥70%）；調度建議（優先級 = 嚴重度×歷史需求×持續時間；1km 內餘裕站調車清單）+ UI 頁 | 公開網址可見預測帶、預測型警示、調度建議清單；dagster 排程有新產出 |
+| M6 | 04:15–05:45 | 首頁 KPI hero（回測數字 + 模擬「依預警提前調度」的空滿時數改善 = 命題 KPI1 回測）；`/model` 模型成效頁；README（架構圖 mermaid、KPI、demo 導覽）；`簡報大綱.md`；容器全頁走查 + RWD/深色 | 評審動線：進站 30 秒內看懂三痛點對應三模組；回測數字上網站 |
+| S | 05:45–07:45 | §3.5 加分梯隊由上往下做 + §3.6 守夜 | 每項獨立驗收 |
 | M7 | 07:45–08:00 | 最終 push + 部署驗證 + `SUMMARY.md`（含加分項成果清單） | ScheduleWakeup `stop: true` |
 
 **降級規則**：任一 milestone 落後 >45 分鐘，依序砍：站點分群/鄰近站特徵簡化 → 調度建議簡化（只做優先級排序，不算調車數）→ 預測檔位減半（只做 30/60 分）→ `/model` 頁併入 README。**不可砍底線**：地圖 + 歷史 API + 規則型警示 + baseline 預測 + 公開網址活著。
@@ -108,6 +110,7 @@ M0–M3 ✅ 全部完成（超前約 3 小時，帳目見 PROGRESS.md）。**超
 | 風險 | 對策 |
 |---|---|
 | 訂閱用量上限（最大風險，無自動恢復） | Token 紀律（上方）；真撞上：loop 停擺，用戶早上 `claude --continue` 續跑收尾 |
+| 本機資源耗盡把 production 主機搞掛（**已發生一次**：00:45 ML 首跑 swap 灌滿、同機 Dokploy 重啟） | CLAUDE.md 資源鐵律 7–9：systemd-run 罩（MemoryMax=4G / CPUQuota=400% / nice 19）+ `num_threads=3` + DuckDB 3GB/3t + 跑前 `free -g`；再超限就縮規模：訓練期抽樣 50%→30% → 檔位減半 → 鄰近站特徵砍，**絕不調大上限** |
 | Dokploy build 反覆失敗 | 先在本機 `docker build` 驗過再 push；還不行改 `sourceType=raw` compose 直接貼 Dokploy（比照 s3-proxy 模式） |
 | 新北開放平台半夜掛掉 | 爬蟲已有重試；前端顯示最後快照時間；歷史回放模式是展示保底（規劃已定） |
 | .217 資源不足跑不動 dagster | 降級：砍 dagster service，改 Dokploy Schedules（`scheduleType=server`）每 10 分跑 `docker exec api python -m pipeline.crawl`；Dagster 展示改跑本機錄 GIF |
@@ -121,7 +124,7 @@ M0–M3 ✅ 全部完成（超前約 3 小時，帳目見 PROGRESS.md）。**超
 
 ---
 
-## 7. 續跑方式（給用戶；M0–M3 已完成，2026-08-07 00:15 重新基準）
+## 7. 續跑方式（給用戶；M0–M3 完成、M4 進行中，2026-08-07 00:55 二次基準）
 
 1. 權限要在 bypass 模式：輸入框下方按 `Shift+Tab` 循環到 `bypass permissions`；循環裡沒有就 `exit` 後：
    ```bash
@@ -132,7 +135,7 @@ M0–M3 ✅ 全部完成（超前約 3 小時，帳目見 PROGRESS.md）。**超
 2. 貼這條指令（一字不改）：
 
    ```
-   /loop 續跑 /home/sk/work/youbike/MISSION.md 隔夜衝刺：M0–M3 已完成，從 M4 開始。每輪醒來：date 對照 MISSION.md §3 基準表、讀 PROGRESS.md 狀態塊，埋頭做當前項目，一輪盡量完成一個完整驗收單位，嚴守 CLAUDE.md 鐵律（前端先本機容器驗證、push 後手動 compose-deploy、驗收打公開網址、token 紀律）。完成就 commit+push+部署驗證+更新 PROGRESS.md，再 ScheduleWakeup 排下輪（背景長任務跑著就 1200 秒 fallback，接續工作 60–180 秒）。M4–M6 主線做完依序做 MISSION §3.5 加分梯隊（一次一項，剩餘時間不足該項預算 1.5 倍就不開工）；沒項目可開就進 §3.6 守夜模式（每 30–60 分鐘輕量健檢公開網址與 Dagster，壞了修、沒壞只記一行心跳）。遇錯自己修、同錯 3 次換 §5 備案，絕不停下來等人、絕不提前結束。台北時間 07:45 進 M7 收尾，08:00 寫完 SUMMARY.md 後用 stop:true 結束 loop。
+   /loop 續跑 /home/sk/work/youbike/MISSION.md 隔夜衝刺：M0–M3 完成，M4 進行中（ml/ 四檔已寫好，00:45 首跑沒設資源上限把機器吃掛，配額已調安全）。每輪醒來：date 對照 MISSION.md §3 基準表、讀 PROGRESS.md 狀態塊，埋頭做當前項目，一輪盡量完成一個完整驗收單位，嚴守 CLAUDE.md 鐵律。最高優先是資源鐵律：本機就是 .217 production 主機（8 核/14GB），特徵工程/訓練/回測/docker build 等重活一律用 systemd-run --user --scope -p MemoryMax=4G -p CPUQuota=400% nice -n 19 包住並 run_in_background；LightGBM num_threads=3、DuckDB memory_limit 3GB/threads 3；重活開跑前 free -g 確認 available ≥6G；被 OOM 殺就縮規模（訓練期抽樣 50%→30%、檔位減半），絕不調大上限。其他鐵律：前端先本機容器驗證、push 後手動 compose-deploy、驗收打公開網址、token 紀律。完成就 commit+push+部署驗證+更新 PROGRESS.md，再 ScheduleWakeup 排下輪（背景長任務跑著就 1200 秒 fallback，接續工作 60–180 秒）。M4–M6 主線做完依序做 MISSION §3.5 加分梯隊（一次一項，剩餘時間不足該項預算 1.5 倍就不開工）；沒項目可開就進 §3.6 守夜模式（每 30–60 分鐘輕量健檢公開網址與 Dagster，壞了修、沒壞只記一行心跳）。遇錯自己修、同錯 3 次換 §5 備案，絕不停下來等人、絕不提前結束。台北時間 07:45 進 M7 收尾，08:00 寫完 SUMMARY.md 後用 stop:true 結束 loop。
    ```
 
 3. 機器整晚不能睡：電源設定「永不休眠」（GNOME：設定 → 電源 → 自動暫停關閉；或跑 `systemd-inhibit --what=sleep:idle sleep infinity &`）。`/loop` 的排程在 CLI 進程裡，**進程死 = loop 死**。
